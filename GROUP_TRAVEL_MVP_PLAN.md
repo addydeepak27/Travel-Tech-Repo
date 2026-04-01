@@ -13,6 +13,68 @@
 
 ---
 
+## Competitive Analysis — Wanderlog vs TripSquad MVP
+
+### What Wanderlog is
+Wanderlog is an all-in-one travel planning app (web + iOS + Android) with real-time collaborative itinerary editing (Google Docs-style), ChatGPT-powered itinerary generation, multi-site hotel price comparison (Airbnb/Expedia/Booking.com), route optimisation on a map, and expense splitting. 1M+ users. Generous free tier.
+
+---
+
+### Where TripSquad is categorically different (not just better — different problem)
+
+| Dimension | Wanderlog | TripSquad MVP |
+|---|---|---|
+| **Core problem solved** | Trip documentation and itinerary building | Group coordination — getting everyone to a decision |
+| **Where it lives** | App download or web login required | WhatsApp-native — no download, no login |
+| **Group decision-making** | None. No voting, no consent, no structured input. Groups must use WhatsApp/email alongside it. | The entire product. Voted decisions at every step — destination, hotel, itinerary. |
+| **Who builds the plan** | Organiser does everything. Collaboration = others can edit what the organiser created. | Distributed ownership. Every member picks a role and owns a slice. Organiser monitors. |
+| **Budget alignment** | Collected after destination chosen (if at all) | Collected anonymously before destination is even discussed. Anchors all downstream recommendations. |
+| **Task accountability** | None. No individual task assignment, no deadlines, no completion tracking. | Avatar Mission Packs. Named tasks per person with T-relative deadlines and point consequences. |
+| **Passive participant problem** | No mechanism. Non-responders create silent blockers. | FOMO framework — 5 levers, per-step escalation, auto-assign threat, points decay. |
+| **Organiser load** | Higher than WhatsApp. Organiser now also manages a planning tool on top of the group. | Lower than WhatsApp. Platform absorbs coordination; organiser monitors a board. |
+| **Hotel recommendations** | Broad search across 6 booking sites. Organiser picks and adds to plan. | 3 curated options tied to the group's actual budget zone and avatar mix. Group votes. |
+| **AI itinerary** | Generic ChatGPT output. One plan, anyone can edit freely. | Persona-weighted by avatar distribution + individual pace/spend inputs. Vote-to-lock, not edit-freely. |
+| **Target market** | Global, English-first, app-savvy travellers | Indian millennials, WhatsApp-first, organising group trips in domestic market |
+
+**The fundamental gap Wanderlog leaves open:** It assumes the group already agrees on the destination, has aligned on budget, and has a willing organiser who will do all the work. TripSquad solves the step before all of that.
+
+---
+
+### Where Wanderlog is stronger — and why it doesn't apply to our PRD
+
+| Wanderlog strength | Why it's out of scope for TripSquad V1 |
+|---|---|
+| Map-based visualisation of itinerary stops | Adds significant build complexity. Our PRD problem is decision-making, not navigation. V2 candidate. |
+| Expense splitting + settlement | Explicitly excluded from V1. Post-trip, not coordination. |
+| Multi-site hotel price search (live inventory) | Requires hotel API integrations. V1 uses Claude-curated shortlist. External booking links handle the transaction. |
+| Native iOS/Android apps | PWA covers MVP use case. App store is a distribution problem, not a coordination problem. |
+| Real-time collaborative itinerary editing | Edit-freely creates conflict. Vote-to-lock is the design choice. Collaborative editing is V2. |
+| Gmail booking import | Irrelevant — TripSquad doesn't handle bookings. |
+
+---
+
+### One genuine improvement Wanderlog reveals — aligned with our PRD
+
+**Map context on the hotel shortlist and itinerary page.**
+
+Wanderlog's strongest UX moment is showing accommodation and activities on a map — members immediately see *where* the hotel is relative to what they're doing. Our hotel cards currently show neighbourhood name and distance callouts in text ("30 min from Baga nightlife"). A simple embedded static map snippet per hotel card (showing hotel pin + 2–3 key activity locations from the voted itinerary) would:
+- Directly address PRD problem #2 (expectations vs reality on hotel listings — visual location context beats text)
+- Require no new integrations — Google Maps Static API or Mapbox Static Images, one API call per hotel card, cached
+- Add no new tap or decision step for the member — it's part of the hotel card they're already viewing
+
+**Verdict: Add static map snippet to hotel card (web page only). V1-viable, low build cost, addresses a real PRD gap.**
+
+---
+
+### What NOT to adopt from Wanderlog (misaligned with our problem statement)
+
+- **Collaborative editing** — our design is vote-to-lock, not edit-freely. Introducing free editing reintroduces the 200-message conflict the product is designed to eliminate.
+- **Expense tracking** — explicitly out of scope. Adding it would dilute the coordination focus and require payment infrastructure.
+- **App download requirement** — WhatsApp-native is a deliberate choice for the Indian millennial market. An app creates a friction wall at exactly the moment we need zero friction (the invite step).
+- **Broad hotel search** — more options create more paralysis. 3 curated, budget-anchored options with a vote is a better coordination design than a search engine.
+
+---
+
 ## PRD Problems → How MVP Solves Them
 
 | PRD Gap | MVP Solution |
@@ -85,6 +147,7 @@
 | AI | Claude API (claude-sonnet-4-6) | Destination suggestions, itinerary generation |
 | WhatsApp | Twilio WhatsApp API | Sandbox for dev, production for launch, built-in compliance |
 | Image generation | Sharp (server-side) | Squad cards, crew moodboards |
+| Static maps | Google Maps Static API | Hotel location context on hotel cards — 1 cached image per hotel, no interactive map |
 | Deployment | Vercel | One-click deploy, edge functions, free tier |
 | Webhooks | Next.js API routes | Receive Twilio reply webhooks, update DB |
 
@@ -529,6 +592,7 @@ WhatsApp message to all members:
 - Price per room per night + estimated total per person for trip duration
 - 2 highlights: "Rooftop pool · 5 min walk to beach"
 - 1 honest caveat: "30 min from Baga nightlife" / "No AC in standard rooms" / "Shared dorms only below ₹1,500"
+- **Static map snippet** — hotel pin + 2–3 key activity locations from the voted itinerary (Google Maps Static API or Mapbox Static Images, one server-side call per hotel, cached). Gives immediate visual context of where the hotel sits relative to what the group is doing. No interactive map — static image only.
 - External booking link (MakeMyTrip / Booking.com / hotel website) — no transaction on platform
 
 **Voting:**
@@ -898,7 +962,7 @@ The journey states avatar selection takes 2 taps on web. For users on 2G, older 
 - [ ] Unanimous fast-track + short planning window fast-track (6h window if departure <5 days)
 - [ ] Vote tiebreaker: organizer override notification on tied votes
 - [ ] Claude API: hotel shortlist — 3 options tiered around weighted median (below / at / just above)
-- [ ] Hotel cards: highlights + honest caveat + per-person cost computed from actual group size + trip duration + external booking link
+- [ ] Hotel cards: highlights + honest caveat + per-person cost + static map snippet (hotel pin + 2–3 itinerary activity locations, Google Maps Static API, cached) + external booking link
 - [ ] Hotel vote: quick-reply buttons → majority wins → confirmed to dashboard
 - [ ] Hotel tiebreaker: organizer one-tap pick
 
@@ -1012,3 +1076,4 @@ The journey states avatar selection takes 2 taps on web. For users on 2G, older 
 - [ ] Avatar page loads under 2 seconds on mobile data
 - [ ] Hotel shortlist web page loads under 2 seconds
 - [ ] All WhatsApp quick-reply buttons visible without scrolling
+
