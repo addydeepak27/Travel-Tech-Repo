@@ -437,7 +437,7 @@ Mission Packs activate with real calendar deadlines. Dashboard goes live. WhatsA
 
 ---
 
-### MEMBER — 6 required taps. Invite to trip locked. 1 tap per task after.
+### MEMBER — 10 required taps. Invite to trip locked. 1 tap per task after.
 
 ---
 
@@ -933,6 +933,75 @@ The journey states avatar selection takes 2 taps on web. For users on 2G, older 
 - Date conflict resolution across member availability
 - WhatsApp Flows for avatar selection (removes web redirect)
 - GDPR/privacy policy and data deletion flow
+
+---
+
+## Screens & Pages Inventory
+
+Every URL that needs to be built. Nothing else. No extra pages.
+
+| Route | Who sees it | Purpose | Auth required |
+|---|---|---|---|
+| `/` | Organizer | Trip creation — destination chips + avatar picker + Share to WhatsApp | None |
+| `/trip/[tripId]` | All members | Trip dashboard — destination, hotel, itinerary, tasks, leaderboard, "For You" | None (shareable URL) |
+| `/join/[tripId]` | New member | Consent page shown if member taps link rather than WhatsApp button. Shows trip details + I'm In / Can't Make It | None |
+| `/avatar/[tripId]/[memberId]` | Member | Avatar selection — role cards with task preview, taken roles greyed, 1-tap select | None (magic link token in URL) |
+| `/hotels/[tripId]` | All members | Hotel shortlist — 3 cards with static map, highlights, caveat, per-person cost, external booking link, vote buttons | None |
+| `/itinerary/[tripId]` | All members | Day-by-day plan + "For You" callouts per member (member identified by token in URL) | None |
+| `/organizer/[tripId]` | Organizer only | Organizer dashboard — full task board, avatar claim status, non-responder count, nudge panel, budget gap alert, budget tips | Token-gated (organizer link) |
+| `/api/webhook/twilio` | Server | Receive all inbound WhatsApp replies from Twilio. Routes to correct handler by message type. | Internal |
+| `/api/trip/create` | Server | Create trip, generate invite link, send first WhatsApp via Twilio | Internal |
+| `/api/claude/destinations` | Server | Generate 3 destination options from budget zone + avatar mix | Internal |
+| `/api/claude/hotels` | Server | Generate 3 hotel options from destination + budget tier + avatar distribution | Internal |
+| `/api/claude/itinerary` | Server | Generate group itinerary + per-member "For You" callouts | Internal |
+| `/api/claude/tips` | Server | Generate 3 organizer cost optimization tips from budget zone + destination | Internal |
+| `/api/maps/hotel-card/[hotelId]` | Server | Generate and cache static map image for hotel card | Internal |
+
+**Total public-facing screens: 7. Total API routes: 8.**
+
+---
+
+## Mobile UX Design Principles
+
+Every screen is built mobile-first. These rules are non-negotiable.
+
+### Layout rules
+- **Single-column layout throughout.** No sidebars. No horizontal scroll. Content stacks vertically.
+- **Touch targets minimum 44×44px** on all tappable elements — buttons, cards, quick-reply chips.
+- **Cards, not tables.** Any data that would be a table on desktop is a stacked card on mobile.
+- **Bottom-anchored primary action.** The one action that moves the user forward is pinned to the bottom of the screen — always visible, never buried below the fold.
+- **No modals on mobile.** Any overlay or confirmation uses a bottom sheet, not a centred modal.
+
+### Content rules
+- **One decision per screen.** Avatar page = pick your role. Hotel page = vote on a hotel. Itinerary page = approve or flag. Never two decisions on one screen.
+- **Primary label above, supporting detail below.** Member reads the role name first; task preview is secondary. Hotel name first; caveat is secondary.
+- **Maximum 3 options per vote.** WhatsApp quick-reply max is 3 buttons. Web vote UI mirrors this — never more than 3 choices.
+- **No empty states.** Every loading state has a skeleton. Every waiting state has context ("Waiting for 2 more budgets before destinations unlock").
+
+### Avatar page (mobile-specific)
+- Cards displayed as a **2-column grid** on mobile (not a list). Each card: role icon (top), role name (bold), 1-line description, 2 task chips with deadline tags.
+- Taken roles: greyed card with "Taken" chip. Still visible — seeing taken roles reinforces scarcity.
+- Card tap = instant visual selection (card highlights) + haptic feedback + 300ms delay → page closes → WhatsApp reopens. No confirm button.
+- Page loads under 2 seconds on 4G. Avatar icons are SVG (not images).
+
+### Hotel shortlist page (mobile-specific)
+- Cards displayed as a **vertical stack** (1 per screen width). Each card: hotel name + star rating → static map image (16:9, 320×180px, cached) → highlights row → honest caveat chip → per-person cost badge → "Book externally" link.
+- Vote buttons (3 hotel names) are fixed to the bottom of the screen, always visible. Member scrolls through cards, votes without scrolling back up.
+- Static map image is lazy-loaded. Placeholder shown while loading.
+
+### Trip dashboard (mobile-specific)
+- **Tab navigation at bottom:** Plan · Tasks · Squad · You
+  - **Plan tab:** Destination + hotel card + day-by-day itinerary (collapsed by default, tap day to expand) + "For You" callout inline per day
+  - **Tasks tab:** Member's own tasks only. Status chips: To Do / Done / Overdue. Other avatars' task counts shown as a compact row — not their full list.
+  - **Squad tab:** Avatar grid with completion status (Zzz for inactive), group hype score, points leaderboard
+  - **You tab:** Member's avatar, budget tier, points total, trip contribution summary
+- **Progressive unlock:** Locked sections show a blurred placeholder with a "Unlocks when [step] is complete" label. Not a grey block — always communicates what's coming.
+- **Real-time updates via Supabase subscriptions.** No manual refresh. New task completions, votes, and leaderboard changes update live.
+
+### Organizer dashboard (mobile-specific)
+- **Same bottom tab structure** as member dashboard, plus an additional **"Monitor" tab** showing: avatar claim status grid, non-responder list with one-tap nudge per person, vote tally live, overdue task count with names.
+- Budget gap alert and cost tips appear as a dismissible card at the top of the Plan tab — not a blocking modal.
+- All nudge actions are 1 tap. No confirmation dialog for nudges.
 
 ---
 
