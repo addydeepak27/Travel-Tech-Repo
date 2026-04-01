@@ -3,26 +3,62 @@ import { createServiceClient } from '@/lib/supabase'
 import { sendWhatsApp, formatPhone } from '@/lib/twilio'
 import { AVATAR_META } from '@/types'
 import type { AvatarType } from '@/types'
+import { normalisePhone } from '@/lib/phone'
+
+function generateTravelCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
+}
+
+async function getUniqueTravelCode(db: ReturnType<typeof createServiceClient>): Promise<string> {
+  for (let i = 0; i < 5; i++) {
+    const code = generateTravelCode()
+    const { data } = await db.from('trips').select('id').eq('travel_code', code).single()
+    if (!data) return code
+  }
+  return generateTravelCode()
+}
 
 export async function POST(req: NextRequest) {
-  const { destinations, organizerAvatar, organizerPhone, organizerName, memberPhones } = await req.json()
+  const {
+    destinations,
+    organizerPhone,
+    organizerName,
+    organizerEmail,
+    memberPhones,
+    destinationMode,
+    departureDate,
+    returnDate,
+  } = await req.json()
 
-  if (!destinations?.length || !organizerAvatar || !organizerPhone) {
+  if (!destinations?.length || !organizerPhone) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
   const db = createServiceClient()
   const appUrl = process.env.NEXT_PUBLIC_APP_URL
 
-  // Create the trip
-  const tripName = `${destinations[0]} or Bust`
+  const travelCode = await getUniqueTravelCode(db)
+
+  const organizerAvatar: AvatarType = 'planner'
+
+  const tripName = `${Array.isArray(destinations) ? destinations[0]?.name ?? destinations[0] : destinations} or Bust`
+  const isOrganizerPick = destinationMode === 'organizer_pick'
+
+  const destinationOptionsValue = Array.isArray(destinations) ? destinations : [destinations]
+
   const { data: trip, error: tripError } = await db
     .from('trips')
     .insert({
       name: tripName,
       status: 'inviting',
-      destination_options: destinations,
+      destination_options: destinationOptionsValue,
+      confirmed_destination: isOrganizerPick ? (destinationOptionsValue[0]?.name ?? destinationOptionsValue[0]) : null,
       gamification_enabled: true,
+      travel_code: travelCode,
+      departure_date: departureDate ?? null,
+      return_date: returnDate ?? null,
+      status_updated_at: new Date().toISOString(),
     })
     .select()
     .single()
@@ -31,7 +67,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to create trip' }, { status: 500 })
   }
 
-  // Create organizer as first member
   const orgPhone = formatPhone(organizerPhone)
   const { data: organizer } = await db
     .from('members')
@@ -39,9 +74,11 @@ export async function POST(req: NextRequest) {
       trip_id: trip.id,
       phone: orgPhone,
       name: organizerName ?? 'Organiser',
+      email: organizerEmail ?? null,
       avatar: organizerAvatar,
       status: 'active',
       points: 0,
+      brownie_points: 0,
       opt_out: false,
       joined_at: new Date().toISOString(),
     })
@@ -52,23 +89,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to create organiser' }, { status: 500 })
   }
 
-  // Set organizer_id on trip
   await db.from('trips').update({ organizer_id: organizer.id }).eq('id', trip.id)
 
-  // Create invited members
-  const memberRows = (memberPhones as string[]).map(phone => ({
-    trip_id: trip.id,
-    phone: formatPhone(phone),
-    status: 'invited',
-    points: 0,
-    opt_out: false,
-  }))
+  const rawPhones: string[] = memberPhones ?? []
+  const memberRows = rawPhones
+    .map(p => normalisePhone(p) ?? formatPhone(p))
+    .filter(Boolean)
+    .map(phone => ({
+      trip_id: trip.id,
+      phone,
+      status: 'invited',
+      points: 0,
+      brownie_points: 0,
+      opt_out: false,
+    }))
 
   if (memberRows.length > 0) {
     await db.from('members').insert(memberRows)
   }
 
-  // Fetch all members to show roles needed
   const { data: allMembers } = await db
     .from('members')
     .select('id, phone, status')
@@ -76,33 +115,33 @@ export async function POST(req: NextRequest) {
 
   const allAvatars = Object.keys(AVATAR_META) as AvatarType[]
   const neededRoles = allAvatars
-    .filter(a => a !== organizerAvatar)
+    .filter(a => a !== 'planner')
     .slice(0, 3)
     .map(a => AVATAR_META[a].label)
     .join(', ')
 
-  const orgAvatarLabel = AVATAR_META[organizerAvatar as AvatarType].label
-  const inviteLink = `${appUrl}/join/${trip.id}`
+  const joinUrl = `${appUrl}/join/${trip.id}`
 
-  // Send personalised invites (each member gets a link with their ID)
   for (const m of allMembers?.filter(m => m.status === 'invited') ?? []) {
     const personalLink = `${appUrl}/join/${trip.id}?m=${m.id}`
-    const message = `*${orgAvatarLabel}* is organising *${tripName}* 🌊\n\n📍 Destinations: ${destinations.join(', ')}\n👥 ${memberPhones.length + 1} people invited\n🎭 Roles still needed: ${neededRoles}\n_(each role owns part of the planning)_\n\nJoin → ${personalLink}\n\n[I'm In 🙌] Reply YES\n[Can't Make It] Reply NO\n\n_Reply STOP anytime to opt out of messages._`
-    await sendWhatsApp(m.phone, message)
+    await sendWhatsApp(
+      m.phone,
+      `*The Planner* is organising *${tripName}* 🌊\n\n🎭 Roles needed: ${neededRoles}\n_(each role owns part of the planning)_\n\nJoin → ${personalLink}\n\nReply YES to join or NO to decline.\n\n_Reply STOP anytime to opt out._`
+    )
   }
 
-  // Confirm to organizer
   const dashboardUrl = `${appUrl}/organizer/${trip.id}`
   await sendWhatsApp(
     orgPhone,
-    `✅ *${tripName}* is live! Invites sent to ${memberPhones.length} people.\n\nMonitor your trip → ${dashboardUrl}`
+    `✅ *${tripName}* is live!\n\nTravel code: *${travelCode}*\nShare this to invite anyone: ${joinUrl}\n\nMonitor your trip → ${dashboardUrl}`
   )
 
   return NextResponse.json({
     tripId: trip.id,
     tripName,
+    travelCode,
     dashboardUrl,
-    inviteLink,
+    inviteLink: joinUrl,
     organizerId: organizer.id,
   })
 }

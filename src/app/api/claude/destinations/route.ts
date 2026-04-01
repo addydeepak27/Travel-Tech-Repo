@@ -53,13 +53,16 @@ export async function POST(req: NextRequest) {
     .eq('opt_out', false)
 
   const optionLines = destinations
-    .map((d, i) => `[${i + 1}] ${d.emoji} ${d.name} · ${d.estimated_cost}`)
+    .map((d, i) => {
+      const hotelAnchor = d.hotel_range ? ` · 🏨 ${d.hotel_range}` : ''
+      return `[${i + 1}] ${d.emoji} ${d.name} · ${d.estimated_cost}${hotelAnchor}`
+    })
     .join('\n')
 
   for (const m of members ?? []) {
     await sendWhatsApp(
       m.phone,
-      `Vote for *${trip.name}* destination — closes in 48h (earlier if everyone votes):\n\n${optionLines}\n\nReply 1, 2, or 3`
+      `Vote for *${trip.name}* destination — closes in 48h (earlier if everyone votes):\n\n${optionLines}\n\n_Hotel costs are estimates, not bookings_\n\nReply 1, 2, or 3`
     )
   }
 

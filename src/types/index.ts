@@ -20,6 +20,9 @@ export type TripStatus =
   | 'itinerary_vote'
   | 'locked'
   | 'cancelled'
+  | 'destination_vote_pending'
+  | 'destination_tiebreaker'
+  | 'hotel_tiebreaker'
 
 export type MemberStatus =
   | 'invited'
@@ -29,6 +32,11 @@ export type MemberStatus =
   | 'active'
   | 'declined'
   | 'dropped'
+  | 'avatar_selection'
+  | 'pref_q1'
+  | 'pref_q2'
+  | 'pref_q3'
+  | 'pref_q4'
 
 export type TaskStatus = 'pending' | 'done' | 'overdue' | 'reassigned'
 
@@ -51,6 +59,11 @@ export interface Trip {
   weighted_median_tier: BudgetTier | null
   gamification_enabled: boolean
   created_at: string
+  travel_code: string | null
+  status_updated_at: string | null
+  destination_vote_scheduled_at: string | null
+  used_fallback: boolean
+  itinerary_cost_alert: boolean
 }
 
 export interface Member {
@@ -67,6 +80,13 @@ export interface Member {
   points: number
   opt_out: boolean
   joined_at: string | null
+  email: string | null
+  activity_pref: string | null
+  trip_priority: string | null
+  special_requests: string | null
+  brownie_points: number
+  budget_assumed: boolean
+  avatar_auto_assigned: boolean
 }
 
 export interface Hotel {
@@ -266,3 +286,56 @@ export const TRENDING_DESTINATIONS = [
   { name: 'Kerala', emoji: '🌴' },
   { name: 'Kasol', emoji: '🌲' },
 ]
+
+export const INDIAN_DESTINATIONS = [
+  { name: 'Goa', state: 'Goa', emoji: '🏖' },
+  { name: 'Manali', state: 'Himachal Pradesh', emoji: '🏔' },
+  { name: 'Pondicherry', state: 'Puducherry', emoji: '🌿' },
+  { name: 'Jaipur', state: 'Rajasthan', emoji: '🏰' },
+  { name: 'Udaipur', state: 'Rajasthan', emoji: '💧' },
+  { name: 'Jodhpur', state: 'Rajasthan', emoji: '🔵' },
+  { name: 'Jaisalmer', state: 'Rajasthan', emoji: '🏜' },
+  { name: 'Pushkar', state: 'Rajasthan', emoji: '🐪' },
+  { name: 'Coorg', state: 'Karnataka', emoji: '☕' },
+  { name: 'Hampi', state: 'Karnataka', emoji: '🗿' },
+  { name: 'Mysuru', state: 'Karnataka', emoji: '🏯' },
+  { name: 'Chikmagalur', state: 'Karnataka', emoji: '🌱' },
+  { name: 'Munnar', state: 'Kerala', emoji: '🍵' },
+  { name: 'Alleppey', state: 'Kerala', emoji: '🚣' },
+  { name: 'Varkala', state: 'Kerala', emoji: '🌊' },
+  { name: 'Wayanad', state: 'Kerala', emoji: '🌿' },
+  { name: 'Kochi', state: 'Kerala', emoji: '⛵' },
+  { name: 'Kovalam', state: 'Kerala', emoji: '🏄' },
+  { name: 'Spiti', state: 'Himachal Pradesh', emoji: '🗻' },
+  { name: 'Kasol', state: 'Himachal Pradesh', emoji: '🌲' },
+  { name: 'Dharamshala', state: 'Himachal Pradesh', emoji: '🙏' },
+  { name: 'Bir Billing', state: 'Himachal Pradesh', emoji: '🪂' },
+  { name: 'Mussoorie', state: 'Uttarakhand', emoji: '🌁' },
+  { name: 'Rishikesh', state: 'Uttarakhand', emoji: '🧘' },
+  { name: 'Nainital', state: 'Uttarakhand', emoji: '🏞' },
+  { name: 'Kedarkantha', state: 'Uttarakhand', emoji: '❄️' },
+  { name: 'Chopta', state: 'Uttarakhand', emoji: '⛺' },
+  { name: 'Auli', state: 'Uttarakhand', emoji: '⛷' },
+  { name: 'Leh', state: 'Ladakh', emoji: '🏔' },
+  { name: 'Pangong', state: 'Ladakh', emoji: '💙' },
+  { name: 'Zanskar', state: 'Ladakh', emoji: '🏞' },
+  { name: 'Darjeeling', state: 'West Bengal', emoji: '🍵' },
+  { name: 'Sikkim', state: 'Sikkim', emoji: '🌸' },
+  { name: 'Shillong', state: 'Meghalaya', emoji: '🌧' },
+  { name: 'Varanasi', state: 'Uttar Pradesh', emoji: '🪔' },
+  { name: 'Agra', state: 'Uttar Pradesh', emoji: '🕌' },
+  { name: 'Khajuraho', state: 'Madhya Pradesh', emoji: '🗿' },
+  { name: 'Orchha', state: 'Madhya Pradesh', emoji: '🏰' },
+  { name: 'Jim Corbett', state: 'Uttarakhand', emoji: '🐯' },
+  { name: 'Ranthambore', state: 'Rajasthan', emoji: '🐆' },
+  { name: 'Andaman', state: 'Andaman & Nicobar', emoji: '🏝' },
+  { name: 'Diu', state: 'Dadra & Nagar Haveli', emoji: '🌅' },
+  { name: 'Tarkarli', state: 'Maharashtra', emoji: '🤿' },
+  { name: 'Mumbai', state: 'Maharashtra', emoji: '🌆' },
+  { name: 'Kolkata', state: 'West Bengal', emoji: '🌉' },
+  { name: 'Hyderabad', state: 'Telangana', emoji: '🍛' },
+  { name: 'Ooty', state: 'Tamil Nadu', emoji: '🚂' },
+  { name: 'Majuli', state: 'Assam', emoji: '🏞' },
+  { name: 'Kaziranga', state: 'Assam', emoji: '🦏' },
+  { name: 'Valley of Flowers', state: 'Uttarakhand', emoji: '🌺' },
+] as const

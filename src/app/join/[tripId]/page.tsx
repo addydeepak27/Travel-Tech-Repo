@@ -24,7 +24,7 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
     async function load() {
       const { data } = await supabase
         .from('trips')
-        .select('name, destination_options, organizer_id, members(id, avatar, status)')
+        .select('name, destination_options, organizer_id, members(id, avatar, status, opt_out)')
         .eq('id', tripId)
         .single()
 
@@ -40,6 +40,11 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
       // Check if this member already responded
       if (memberId) {
         const me = data.members?.find((m: { id: string }) => m.id === memberId)
+        if (me?.opt_out) {
+          setAlreadyResponded('out')
+          setLoading(false)
+          return
+        }
         if (me?.status === 'consented' || me?.status === 'avatar_selected' || me?.status === 'active') {
           setAlreadyResponded('in')
         } else if (me?.status === 'declined') {

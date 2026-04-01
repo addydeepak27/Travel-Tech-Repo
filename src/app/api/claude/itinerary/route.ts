@@ -5,7 +5,7 @@ import { sendWhatsApp } from '@/lib/twilio'
 import type { AvatarType, BudgetTier, Hotel, VotePace } from '@/types'
 
 export async function POST(req: NextRequest) {
-  const { tripId, constraint } = await req.json()
+  const { tripId, constraint, paceOverride } = await req.json()
   if (!tripId) return NextResponse.json({ error: 'Missing tripId' }, { status: 400 })
 
   const db = createServiceClient()
@@ -48,6 +48,9 @@ export async function POST(req: NextRequest) {
   // Override budget tier if constraint requested
   const effectiveTier: BudgetTier = constraint === 'budget' ? 'backpacker' : budgetTier
 
+  // Override pace if explicitly provided (e.g. from dissent vibe selection)
+  const effectivePaceOverride = (paceOverride as VotePace | undefined) ?? undefined
+
   const { itinerary, for_you } = await generateItinerary(
     trip.confirmed_destination,
     hotel,
@@ -61,7 +64,8 @@ export async function POST(req: NextRequest) {
       budget_tier: m.budget_tier,
       spend_vote: (m.spend_vote as 'low' | 'mid' | 'high' | null),
     })),
-    tripId
+    tripId,
+    effectivePaceOverride
   )
 
   // Remove the now-redundant trip_id override since generateItinerary sets it correctly

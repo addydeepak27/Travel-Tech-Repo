@@ -10,7 +10,7 @@ export async function generateDestinations(
   avatarDistribution: Record<AvatarType, number>,
   budgetTier: BudgetTier,
   tripDurationDays: number
-): Promise<{ name: string; emoji: string; estimated_cost: string; reason: string }[]> {
+): Promise<{ name: string; emoji: string; estimated_cost: string; reason: string; hotel_range: string }[]> {
   const avatarSummary = Object.entries(avatarDistribution)
     .filter(([, count]) => count > 0)
     .map(([avatar, count]) => `${count}× ${AVATAR_META[avatar as AvatarType].label}`)
@@ -28,18 +28,19 @@ Rules:
 2. Each destination must serve at least 2 avatar types in the group
 3. Destinations must be distinct (no two similar vibes)
 4. Include estimated total cost per person in INR
-5. Return ONLY valid JSON, no markdown
+5. Include a realistic hotel nightly rate range (per room) for this budget tier at this destination
+6. Return ONLY valid JSON, no markdown
 
 Return this exact JSON structure:
 [
-  { "name": "Destination name", "emoji": "single emoji", "estimated_cost": "₹X,XXX–₹X,XXX", "reason": "One sentence why this fits this group's avatar mix and budget" },
+  { "name": "Destination name", "emoji": "single emoji", "estimated_cost": "₹X,XXX–₹X,XXX", "reason": "One sentence why this fits this group's avatar mix and budget", "hotel_range": "₹X,XXX–₹X,XXX/night" },
   ...
 ]`
 
   try {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 500,
+      max_tokens: 600,
       messages: [{ role: 'user', content: prompt }],
     })
     const text = (response.content[0] as { type: string; text: string }).text
@@ -47,9 +48,9 @@ Return this exact JSON structure:
   } catch {
     // Fallback destinations if Claude fails
     return [
-      { name: 'Goa', emoji: '🏖', estimated_cost: '₹7,000–₹12,000', reason: 'Beaches, food, and nightlife for mixed groups on a comfortable budget.' },
-      { name: 'Manali', emoji: '🏔', estimated_cost: '₹9,000–₹14,000', reason: 'Adventure activities and scenic landscapes for active groups.' },
-      { name: 'Pondicherry', emoji: '🌿', estimated_cost: '₹6,000–₹10,000', reason: 'Relaxed French Quarter, beaches, and food for a chill group escape.' },
+      { name: 'Goa', emoji: '🏖', estimated_cost: '₹7,000–₹12,000', reason: 'Beaches, food, and nightlife for mixed groups on a comfortable budget.', hotel_range: '₹2,000–₹4,000/night' },
+      { name: 'Manali', emoji: '🏔', estimated_cost: '₹9,000–₹14,000', reason: 'Adventure activities and scenic landscapes for active groups.', hotel_range: '₹2,500–₹5,000/night' },
+      { name: 'Pondicherry', emoji: '🌿', estimated_cost: '₹6,000–₹10,000', reason: 'Relaxed French Quarter, beaches, and food for a chill group escape.', hotel_range: '₹1,800–₹3,500/night' },
     ]
   }
 }
@@ -154,14 +155,15 @@ export async function generateItinerary(
   paceDistribution: Record<VotePace, number>,
   tripDurationDays: number,
   members: Pick<Member, 'id' | 'avatar' | 'budget_tier' | 'spend_vote'>[],
-  tripId: string
+  tripId: string,
+  paceOverride?: VotePace
 ): Promise<{ itinerary: ItineraryDay[]; for_you: ForYouCallout[] }> {
   const topAvatars = Object.entries(avatarDistribution)
     .filter(([, count]) => count > 0)
     .sort(([, a], [, b]) => b - a)
     .map(([avatar, count]) => `${count}× ${AVATAR_META[avatar as AvatarType].label}`)
 
-  const dominantPace = Object.entries(paceDistribution)
+  const dominantPace = paceOverride ?? Object.entries(paceDistribution)
     .sort(([, a], [, b]) => b - a)[0]?.[0] ?? 'balanced_mix'
 
   const tierMeta = BUDGET_TIER_META[budgetTier]

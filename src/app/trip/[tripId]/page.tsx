@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { AVATAR_META } from '@/types'
 import type { Trip, Member, MissionTask, ForYouCallout, ItineraryDay } from '@/types'
@@ -9,12 +10,14 @@ type Tab = 'plan' | 'tasks' | 'squad' | 'you'
 
 export default function TripDashboard({ params }: { params: Promise<{ tripId: string }> }) {
   const { tripId } = use(params)
+  const router = useRouter()
   const [tab, setTab] = useState<Tab>('plan')
   const [trip, setTrip] = useState<Trip | null>(null)
   const [members, setMembers] = useState<Member[]>([])
   const [myMember, setMyMember] = useState<Member | null>(null)
   const [tasks, setTasks] = useState<MissionTask[]>([])
   const [forYou, setForYou] = useState<ForYouCallout[]>([])
+  const [brownieEvents, setBrownieEvents] = useState<{ event_type: string; points_earned: number }[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -47,11 +50,22 @@ export default function TripDashboard({ params }: { params: Promise<{ tripId: st
       .eq('trip_id', tripId)
       .eq('member_id', memberId ?? '')
 
+    const myMemberData = membersData?.find(m => m.id === memberId) ?? null
     setTrip(tripData)
     setMembers(membersData ?? [])
-    setMyMember(membersData?.find(m => m.id === memberId) ?? null)
+    setMyMember(myMemberData)
     setTasks(tasksData ?? [])
     setForYou(forYouData ?? [])
+
+    if (myMemberData?.id) {
+      const { data: events } = await supabase
+        .from('brownie_events')
+        .select('event_type, points_earned')
+        .eq('member_id', myMemberData.id)
+        .eq('trip_id', tripId)
+      if (events) setBrownieEvents(events)
+    }
+
     setLoading(false)
   }
 
@@ -112,10 +126,10 @@ export default function TripDashboard({ params }: { params: Promise<{ tripId: st
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto">
-        {tab === 'plan' && <PlanTab trip={trip} forYou={forYou} myMember={myMember} />}
+        {tab === 'plan' && <PlanTab trip={trip} forYou={forYou} myMember={myMember} tripId={tripId} />}
         {tab === 'tasks' && <TasksTab tasks={tasks} members={members} />}
         {tab === 'squad' && <SquadTab members={members} />}
-        {tab === 'you' && <YouTab member={myMember} tasks={tasks} />}
+        {tab === 'you' && <YouTab member={myMember} tasks={tasks} brownieEvents={brownieEvents} />}
       </div>
 
       {/* Bottom tab nav */}
@@ -162,7 +176,8 @@ function HypeScore({ members, tasks }: { members: Member[]; tasks: MissionTask[]
   )
 }
 
-function PlanTab({ trip, forYou, myMember }: { trip: Trip; forYou: ForYouCallout[]; myMember: Member | null }) {
+function PlanTab({ trip, forYou, myMember, tripId }: { trip: Trip; forYou: ForYouCallout[]; myMember: Member | null; tripId: string }) {
+  const router = useRouter()
   const [expandedDay, setExpandedDay] = useState<number | null>(0)
 
   return (
@@ -202,6 +217,19 @@ function PlanTab({ trip, forYou, myMember }: { trip: Trip; forYou: ForYouCallout
           </span>
         </div>
       )}
+
+      {/* Group Vibes card */}
+      <button
+        onClick={() => router.push(`/trip/${tripId}/vibes`)}
+        className="w-full p-4 rounded-2xl text-left flex items-center justify-between"
+        style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
+      >
+        <div>
+          <div className="font-semibold text-sm">👥 Group Vibes</div>
+          <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>See how the squad is leaning</div>
+        </div>
+        <span style={{ color: 'var(--muted)' }}>→</span>
+      </button>
 
       {/* Itinerary — locked or blurred */}
       {trip.itinerary ? (
@@ -405,7 +433,16 @@ function SquadTab({ members }: { members: Member[] }) {
   )
 }
 
-function YouTab({ member, tasks }: { member: Member | null; tasks: MissionTask[] }) {
+const EVENT_LABELS: Record<string, string> = {
+  trip_accepted: 'Said yes to the trip',
+  avatar_selected: 'Picked your travel style',
+  questionnaire_completed: 'Shared your vibe',
+  destination_voted: 'Voted on destination',
+  hotel_voted: 'Picked a hotel',
+  itinerary_voted: 'Approved the plan',
+}
+
+function YouTab({ member, tasks, brownieEvents }: { member: Member | null; tasks: MissionTask[]; brownieEvents: { event_type: string; points_earned: number }[] }) {
   if (!member) return (
     <div className="px-5 pt-6 text-center">
       <p className="text-sm" style={{ color: 'var(--muted)' }}>Open this link from the WhatsApp invite to see your profile.</p>
@@ -415,6 +452,7 @@ function YouTab({ member, tasks }: { member: Member | null; tasks: MissionTask[]
   const meta = member.avatar ? AVATAR_META[member.avatar] : null
   const doneTasks = tasks.filter(t => t.status === 'done').length
   const totalTasks = tasks.length
+  const totalBrownie = brownieEvents.reduce((s, e) => s + e.points_earned, 0)
 
   return (
     <div className="px-5 pt-2 pb-4 space-y-4">
@@ -442,6 +480,27 @@ function YouTab({ member, tasks }: { member: Member | null; tasks: MissionTask[]
           <span className="text-sm font-semibold capitalize">{member.budget_tier}</span>
         </div>
       )}
+
+      {/* Brownie Points card */}
+      <div className="p-4 rounded-2xl" style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}>
+        <div className="text-xs font-medium mb-3" style={{ color: 'var(--accent)' }}>🍫 YOUR BROWNIE POINTS</div>
+        <div className="text-3xl font-bold mb-3">{totalBrownie} pts</div>
+        <div className="space-y-2">
+          {Object.entries(EVENT_LABELS).map(([type, label]) => {
+            const evt = brownieEvents.find(e => e.event_type === type)
+            return (
+              <div key={type} className="flex items-center justify-between text-xs">
+                <span style={{ color: evt ? 'var(--foreground)' : 'var(--muted)' }}>
+                  {evt ? '✅' : '⏳'} {label}
+                </span>
+                <span style={{ color: evt ? 'var(--accent)' : 'var(--muted)' }}>
+                  {evt ? `+${evt.points_earned}` : '—'}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
     </div>
   )
 }

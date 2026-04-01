@@ -87,7 +87,7 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
         .eq('id', tripId)
         .single()
 
-      if (!data) return
+      if (!data) { setLoading(false); return }
       setTrip(data)
 
       const { data: membersData } = await supabase

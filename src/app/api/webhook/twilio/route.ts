@@ -393,6 +393,20 @@ async function handleItineraryVote(
   phone: string,
   body: string
 ) {
+  // Check if this member is already in the vibe-selection flow
+  const { data: existingVote } = await db
+    .from('votes')
+    .select('value')
+    .eq('trip_id', trip.id)
+    .eq('member_id', member.id)
+    .eq('vote_type', 'itinerary')
+    .single()
+
+  if (existingVote?.value === 'dissent_vibe') {
+    await handleVibeSelection(db, member, trip, phone, body)
+    return
+  }
+
   if (body === 'looks good' || body === 'yes' || body === '1' || body === '✅') {
     await db.from('votes').upsert({
       trip_id: trip.id,
@@ -416,17 +430,17 @@ async function handleItineraryVote(
       body: JSON.stringify({ tripId: trip.id, constraint: 'budget' }),
     })
   } else if (body === 'b' || body === 'wrong vibe') {
-    await sendWhatsApp(
-      phone,
-      `What vibe do you want instead?\n\n[1] Chill & Eat 🍜\n[2] Mix it up 🎯\n[3] Full Send 🔥\n\nReply 1, 2, or 3 — majority picks the plan.`
-    )
-    // Record dissent vote so organizer can see
+    // Record dissent_vibe state — this member's next reply is a vibe selection
     await db.from('votes').upsert({
       trip_id: trip.id,
       member_id: member.id,
       vote_type: 'itinerary',
       value: 'dissent_vibe',
     }, { onConflict: 'trip_id,member_id,vote_type' })
+    await sendWhatsApp(
+      phone,
+      `What vibe do you want instead?\n\n[1] Chill & Eat 🍜\n[2] Mix it up 🎯\n[3] Full Send 🔥\n\nReply 1, 2, or 3`
+    )
   } else if (body === 'c' || body === 'bad timing') {
     // Notify organizer to adjust specific day
     const { data: tripData } = await db.from('trips').select('organizer_id, members(id, phone)').eq('id', trip.id).single()
@@ -436,6 +450,40 @@ async function handleItineraryVote(
     }
     await sendWhatsApp(phone, `Flagged for the organiser — they'll review the timing and adjust.`)
   }
+}
+
+async function handleVibeSelection(
+  db: ReturnType<typeof createServiceClient>,
+  member: { id: string; trip_id: string },
+  trip: { id: string },
+  phone: string,
+  body: string
+) {
+  const paceMap: Record<string, VotePace> = {
+    '1': 'easy_chill', 'chill': 'easy_chill',
+    '2': 'balanced_mix', 'mix': 'balanced_mix',
+    '3': 'packed_schedule', 'full': 'packed_schedule', 'send': 'packed_schedule',
+  }
+  const pace = paceMap[body]
+
+  if (!pace) {
+    await sendWhatsApp(phone, `Reply 1 for Chill & Eat, 2 for Mix it up, or 3 for Full Send.`)
+    return
+  }
+
+  const paceLabel: Record<VotePace, string> = {
+    easy_chill: 'Chill & Eat',
+    balanced_mix: 'Balanced Mix',
+    packed_schedule: 'Full Send',
+  }
+
+  await sendWhatsApp(phone, `Got it — regenerating with a *${paceLabel[pace]}* vibe. Give us a moment.`)
+
+  await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/claude/itinerary`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tripId: trip.id, paceOverride: pace }),
+  })
 }
 
 async function checkItineraryApproval(

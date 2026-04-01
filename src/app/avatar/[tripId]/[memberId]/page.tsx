@@ -1,19 +1,21 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { AVATAR_META } from '@/types'
 import type { AvatarType } from '@/types'
 
 export default function AvatarPage({ params }: { params: Promise<{ tripId: string; memberId: string }> }) {
   const { tripId, memberId } = use(params)
+  const router = useRouter()
   const [takenAvatars, setTakenAvatars] = useState<AvatarType[]>([])
   const [selected, setSelected] = useState<AvatarType | null>(null)
   const [tripName, setTripName] = useState('')
   const [organizerAvatar, setOrganizerAvatar] = useState<AvatarType | null>(null)
   const [saving, setSaving] = useState(false)
-  const [done, setDone] = useState(false)
   const [groupSize, setGroupSize] = useState(0)
+  const [isOrganizer, setIsOrganizer] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -36,14 +38,18 @@ export default function AvatarPage({ params }: { params: Promise<{ tripId: strin
 
       const org = (trip.members ?? []).find((m: { id: string }) => m.id === trip.organizer_id)
       if (org?.avatar) setOrganizerAvatar(org.avatar as AvatarType)
+      if (trip.organizer_id === memberId) setIsOrganizer(true)
     }
     load()
   }, [tripId, memberId])
 
-  // Show small-group version (only 3 avatars for groups ≤ 3)
-  const showAvatars = groupSize <= 3
-    ? (['planner', 'navigator', 'budgeteer'] as AvatarType[])
-    : Object.keys(AVATAR_META) as AvatarType[]
+  const NON_PLANNER_AVATARS: AvatarType[] = ['navigator', 'budgeteer', 'foodie', 'adventure_seeker', 'photographer', 'spontaneous_one']
+
+  const showAvatars = isOrganizer
+    ? (Object.keys(AVATAR_META) as AvatarType[])
+    : (groupSize <= 3
+        ? (['navigator', 'budgeteer', 'foodie'] as AvatarType[])
+        : NON_PLANNER_AVATARS)
 
   async function handleSelect(avatar: AvatarType) {
     if (saving || takenAvatars.includes(avatar)) return
@@ -73,40 +79,7 @@ export default function AvatarPage({ params }: { params: Promise<{ tripId: strin
       .update({ avatar, status: 'avatar_selected' })
       .eq('id', memberId)
 
-    // Brief animation then show confirmation
-    setTimeout(() => setDone(true), 600)
-  }
-
-  if (done && selected) {
-    const meta = AVATAR_META[selected]
-    return (
-      <div className="min-h-dvh flex flex-col items-center justify-center px-5 safe-top safe-bottom text-center">
-        <div className="text-6xl mb-4">{meta.icon}</div>
-        <h1 className="text-2xl font-bold mb-2">You&apos;re {meta.label}</h1>
-        <p className="text-sm mb-6" style={{ color: 'var(--muted)' }}>
-          {meta.tasks_removed} for {organizerAvatar ? AVATAR_META[organizerAvatar].label : 'the organiser'}.
-          Your tasks are on the way.
-        </p>
-        <div className="w-full max-w-sm space-y-2 text-left">
-          {meta.key_tasks.map((t, i) => (
-            <div
-              key={i}
-              className="flex items-start gap-3 p-3 rounded-xl"
-              style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
-            >
-              <span className="text-lg">📌</span>
-              <div>
-                <div className="text-sm font-medium">{t.title}</div>
-                <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>Due {t.deadline}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-        <p className="text-sm mt-6" style={{ color: 'var(--muted)' }}>
-          You can close this tab. WhatsApp will guide you from here.
-        </p>
-      </div>
-    )
+    setTimeout(() => router.push(`/preferences/${tripId}/${memberId}`), 600)
   }
 
   return (
