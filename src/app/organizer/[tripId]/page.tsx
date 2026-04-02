@@ -81,47 +81,26 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
     if (organizerId === undefined) return
 
     async function load() {
-      const { data } = await supabase
-        .from('trips')
-        .select('*')
-        .eq('id', tripId)
-        .single()
+      const res = await fetch(`/api/trip/${tripId}/organizer-info`)
+      if (!res.ok) { setLoading(false); return }
+      const data = await res.json()
 
-      if (!data) { setLoading(false); return }
-      setTrip(data)
+      setTrip(data.trip)
+      setMembers(data.members ?? [])
+      setTasks(data.tasks ?? [])
+      setVotes(data.votes ?? [])
 
-      const { data: membersData } = await supabase
-        .from('members')
-        .select('*')
-        .eq('trip_id', tripId)
-        .order('joined_at', { ascending: true })
-
-      setMembers(membersData ?? [])
-
-      const { data: tasksData } = await supabase
-        .from('mission_tasks')
-        .select('*')
-        .eq('trip_id', tripId)
-        .order('deadline', { ascending: true })
-
-      setTasks(tasksData ?? [])
-
-      const { data: votesData } = await supabase
-        .from('votes')
-        .select('vote_type, value, member_id')
-        .eq('trip_id', tripId)
-
-      setVotes(votesData ?? [])
+      const membersData = data.members ?? []
 
       // Detect budget tension (spread ≥ 2 tiers)
       if (membersData) {
         const tierValues: Record<string, number> = { backpacker: 1, comfortable: 2, premium: 3, luxury: 4 }
-        const submitted = membersData.filter(m => m.budget_tier)
+        const submitted = membersData.filter((m: TripMember) => m.budget_tier)
         if (submitted.length >= 2) {
-          const vals = submitted.map(m => tierValues[m.budget_tier!] ?? 0)
+          const vals = submitted.map((m: TripMember) => tierValues[m.budget_tier!] ?? 0)
           const spread = Math.max(...vals) - Math.min(...vals)
           if (spread >= 2) {
-            setBudgetAlert(`Heads up: your group has a wide budget gap. ${submitted.filter(m => (tierValues[m.budget_tier!] ?? 0) <= 1).length} members may find the plan a stretch — consider a quick check-in.`)
+            setBudgetAlert(`Heads up: your group has a wide budget gap. ${submitted.filter((m: TripMember) => (tierValues[m.budget_tier!] ?? 0) <= 1).length} members may find the plan a stretch — consider a quick check-in.`)
           }
         }
       }

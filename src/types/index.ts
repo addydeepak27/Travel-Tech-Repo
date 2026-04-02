@@ -249,28 +249,28 @@ export const BUDGET_TIER_META: Record<BudgetTier, {
   daily_spend_ranges: [string, string, string]
 }> = {
   backpacker: {
-    label: 'Backpacker',
-    description: 'Keep it lean',
-    range: '< ₹5,000',
-    daily_spend_ranges: ['Under ₹200', '₹200–₹600', '₹600–₹1,000'],
+    label: 'Budget Traveller',
+    description: 'Keep it lean, make it count',
+    range: '₹0–₹50,000',
+    daily_spend_ranges: ['Under ₹1,000', '₹1,000–₹2,500', '₹2,500–₹5,000'],
   },
   comfortable: {
     label: 'Comfortable',
-    description: 'Balanced and easy',
-    range: '₹5,000–₹10,000',
-    daily_spend_ranges: ['Under ₹500', '₹500–₹1,200', '₹1,200–₹2,500'],
+    description: 'Good vibes, good spend',
+    range: '₹50,000–₹1,00,000',
+    daily_spend_ranges: ['Under ₹2,500', '₹2,500–₹5,000', '₹5,000–₹10,000'],
   },
   premium: {
     label: 'Premium',
-    description: 'Treat ourselves',
-    range: '₹10,000–₹20,000',
-    daily_spend_ranges: ['Under ₹800', '₹800–₹2,000', '₹2,000–₹4,000'],
+    description: 'Treat the squad right',
+    range: '₹1,00,000–₹5,00,000',
+    daily_spend_ranges: ['Under ₹5,000', '₹5,000–₹15,000', '₹15,000–₹30,000'],
   },
   luxury: {
-    label: 'Luxury',
-    description: 'No limits',
-    range: '₹20,000+',
-    daily_spend_ranges: ['Under ₹1,500', '₹1,500–₹3,500', '₹3,500+'],
+    label: 'No Limit 👑',
+    description: "I'm the king, no budget",
+    range: '₹5,00,000+',
+    daily_spend_ranges: ['Whatever it takes', 'Best of the best', 'Money is no object'],
   },
 }
 

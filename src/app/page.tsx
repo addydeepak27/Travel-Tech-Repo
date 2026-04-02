@@ -20,8 +20,7 @@ export default function HomePage() {
   const [destSearch, setDestSearch] = useState('')
   const [destDropdownOpen, setDestDropdownOpen] = useState(false)
   const [memberEmails, setMemberEmails] = useState('')
-  const [departureDate, setDepartureDate] = useState('')
-  const [returnDate, setReturnDate] = useState('')
+  const [travelMonth, setTravelMonth] = useState('')
   const destSearchRef = useRef<HTMLInputElement>(null)
   const destDropdownRef = useRef<HTMLDivElement>(null)
 
@@ -38,9 +37,9 @@ export default function HomePage() {
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
   const canProceedIdentity = name.trim().length >= 1 && emailValid
-  const canProceedDestination = destMode === 'group_vote'
+  const canProceedDestination = (destMode === 'group_vote'
     ? selectedDests.length >= 2
-    : selectedDests.length >= 1
+    : selectedDests.length >= 1) && travelMonth.length > 0
 
   const filteredDests = destSearch.length >= 1
     ? INDIAN_DESTINATIONS.filter(d =>
@@ -80,8 +79,7 @@ export default function HomePage() {
         organizerEmail: email,
         memberEmails: rawEmails,
         destinationMode: destMode,
-        departureDate: departureDate || null,
-        returnDate: returnDate || null,
+        travelMonth: travelMonth || null,
       }),
     })
 
@@ -140,43 +138,55 @@ export default function HomePage() {
     return (
       <div className="min-h-dvh flex flex-col px-5 safe-top" style={{ background: 'var(--background)' }}>
         <div className="flex-1 overflow-y-auto">
-          {/* Hero */}
-          <div className="pt-10 pb-6 text-center">
-            {/* Gradient glow blob behind emoji */}
-            <div className="relative inline-block mb-4">
-              <div className="absolute inset-0 blur-2xl opacity-40 rounded-full" style={{ background: 'radial-gradient(circle, #6366f1 0%, #06b6d4 100%)', transform: 'scale(1.8)' }} />
-              <div className="relative text-5xl">🌊</div>
+          {/* Hero — full-bleed gradient banner like Booking.com */}
+          <div className="-mx-5 px-5 pt-10 pb-7 mb-5 relative overflow-hidden" style={{ background: 'linear-gradient(145deg, #1e1b4b 0%, #0f172a 40%, #0c1a2e 70%, #0f2027 100%)' }}>
+            {/* Ambient glow orbs */}
+            <div className="absolute top-0 left-1/4 w-48 h-48 rounded-full blur-3xl opacity-20 pointer-events-none" style={{ background: '#6366f1' }} />
+            <div className="absolute bottom-0 right-1/4 w-40 h-40 rounded-full blur-3xl opacity-15 pointer-events-none" style={{ background: '#06b6d4' }} />
+
+            {/* Floating destination chips */}
+            <div className="flex flex-wrap justify-center gap-2 mb-5">
+              {['🏖 Goa', '🏔 Manali', '🌿 Coorg', '🏙 Jaipur', '🗻 Kedarkantha', '🌊 Pondicherry'].map(d => (
+                <span key={d} className="px-3 py-1 rounded-full text-xs font-medium" style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.7)' }}>{d}</span>
+              ))}
             </div>
 
-            <h1 className="text-3xl font-black tracking-tight" style={{ background: 'linear-gradient(135deg, #fff 30%, #94a3b8 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              Toh Chale
-            </h1>
-
-            <p className="text-lg font-bold mt-2">
-              Planning should be half the fun.
-            </p>
-
-            {/* Social proof pill */}
-            <div className="inline-flex items-center gap-2 mt-4 px-4 py-1.5 rounded-full text-xs font-semibold" style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', color: '#a5b4fc' }}>
-              <span>✉️</span> Email-native · No app needed
+            <div className="text-center relative">
+              <div className="text-4xl mb-2">🌊</div>
+              <h1 className="text-3xl font-black tracking-tight text-white">Toh Chale</h1>
+              <p className="text-base font-semibold mt-2 text-white">Your squad. One link. Full trip planned.</p>
+              <p className="text-sm mt-1.5 leading-relaxed" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                Votes, roles & AI itinerary — no app, no chaos.
+              </p>
             </div>
+          </div>
 
-            {/* Value props */}
-            <div className="grid grid-cols-3 gap-3 mt-6 text-center">
+          {/* How it works */}
+          <div className="mb-4">
+            <p className="text-xs font-bold tracking-widest mb-3" style={{ color: 'var(--muted)' }}>HOW IT WORKS</p>
+            <div className="space-y-2">
               {[
-                { icon: '🗺️', label: 'Vote on where to go' },
-                { icon: '🎭', label: 'Own your squad role' },
-                { icon: '📅', label: 'AI builds the plan' },
-              ].map(({ icon, label }) => (
-                <div key={label} className="rounded-2xl p-3" style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}>
-                  <div className="text-2xl mb-1">{icon}</div>
-                  <p className="text-xs leading-tight" style={{ color: 'var(--muted)' }}>{label}</p>
+                { icon: '✉️', title: 'Invite your squad', sub: 'Send a link — they join in 2 taps, no sign-up' },
+                { icon: '🗳️', title: 'Vote on the destination', sub: 'Everyone picks. Majority decides. Done.' },
+                { icon: '🎭', title: 'Claim your squad role', sub: 'Foodie, Navigator, Budgeteer & more' },
+                { icon: '✨', title: 'AI builds the itinerary', sub: 'Day-by-day plan built around your squad' },
+              ].map(({ icon, title, sub }, i) => (
+                <div key={title} className="flex items-center gap-3 rounded-2xl px-4 py-3.5" style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}>
+                  <div className="flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center text-base font-black" style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.25), rgba(6,182,212,0.25))', border: '1px solid rgba(99,102,241,0.3)' }}>
+                    {icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold">{title}</div>
+                    <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{sub}</div>
+                  </div>
+                  <div className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-black" style={{ background: 'rgba(99,102,241,0.2)', color: '#a5b4fc' }}>{i + 1}</div>
                 </div>
               ))}
             </div>
           </div>
 
           {/* Form */}
+          <p className="text-xs font-bold tracking-widest mb-3" style={{ color: 'var(--muted)' }}>LET&apos;S START</p>
           <div className="space-y-3 pb-4">
             <div>
               <label className="block text-xs font-semibold mb-1.5 tracking-wide" style={{ color: 'var(--muted)' }}>YOUR NAME</label>
@@ -487,53 +497,25 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* Dates */}
+          {/* Travel Month */}
           <div>
-            <p className="text-xs font-semibold mb-2.5" style={{ color: 'var(--muted)' }}>TRAVEL DATES <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional)</span></p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs mb-1.5" style={{ color: 'var(--muted)' }}>Departure</label>
-                <div style={{ position: 'relative' }}>
-                  <input
-                    type="date"
-                    value={departureDate}
-                    min={today}
-                    max={maxDate}
-                    onChange={e => {
-                      setDepartureDate(e.target.value)
-                      if (returnDate && e.target.value > returnDate) setReturnDate('')
-                    }}
-                    className="w-full px-3 py-3 rounded-xl text-sm outline-none appearance-none"
-                    style={{
-                      background: 'var(--card)',
-                      border: `1.5px solid ${departureDate ? 'var(--accent)' : 'var(--card-border)'}`,
-                      color: departureDate ? 'var(--foreground)' : 'var(--muted)',
-                      colorScheme: 'dark',
-                    }}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs mb-1.5" style={{ color: 'var(--muted)' }}>Return</label>
-                <input
-                  type="date"
-                  value={returnDate}
-                  min={departureDate || today}
-                  max={maxDate}
-                  onChange={e => setReturnDate(e.target.value)}
-                  className="w-full px-3 py-3 rounded-xl text-sm outline-none appearance-none"
-                  style={{
-                    background: 'var(--card)',
-                    border: `1.5px solid ${returnDate ? 'var(--accent)' : 'var(--card-border)'}`,
-                    color: returnDate ? 'var(--foreground)' : 'var(--muted)',
-                    colorScheme: 'dark',
-                  }}
-                />
-              </div>
-            </div>
-            {departureDate && returnDate && (
+            <p className="text-xs font-semibold mb-2.5" style={{ color: 'var(--muted)' }}>WHEN ARE YOU TRAVELLING? <span style={{ color: 'var(--accent)', fontWeight: 600 }}>*</span></p>
+            <input
+              type="month"
+              value={travelMonth}
+              min={new Date().toISOString().slice(0, 7)}
+              onChange={e => setTravelMonth(e.target.value)}
+              className="w-full px-3 py-3 rounded-xl text-sm outline-none appearance-none"
+              style={{
+                background: 'var(--card)',
+                border: `1.5px solid ${travelMonth ? 'var(--accent)' : 'var(--card-border)'}`,
+                color: travelMonth ? 'var(--foreground)' : 'var(--muted)',
+                colorScheme: 'dark',
+              }}
+            />
+            {travelMonth && (
               <p className="text-xs mt-1.5" style={{ color: 'var(--accent)' }}>
-                {Math.ceil((new Date(returnDate).getTime() - new Date(departureDate).getTime()) / 86400000)} day trip
+                Squad members will pick their available dates in {new Date(travelMonth + '-01').toLocaleString('en-IN', { month: 'long', year: 'numeric' })}
               </p>
             )}
           </div>

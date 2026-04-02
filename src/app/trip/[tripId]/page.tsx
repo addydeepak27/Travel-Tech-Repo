@@ -27,45 +27,17 @@ export default function TripDashboard({ params }: { params: Promise<{ tripId: st
   }, [tripId])
 
   async function loadData(memberId: string | null) {
-    const { data: tripData } = await supabase
-      .from('trips')
-      .select('*')
-      .eq('id', tripId)
-      .single()
+    const res = await fetch(`/api/trip/${tripId}/dashboard-info`)
+    if (!res.ok) { setLoading(false); return }
+    const data = await res.json()
 
-    const { data: membersData } = await supabase
-      .from('members')
-      .select('*')
-      .eq('trip_id', tripId)
-
-    const { data: tasksData } = await supabase
-      .from('mission_tasks')
-      .select('*')
-      .eq('trip_id', tripId)
-      .eq('member_id', memberId ?? '')
-
-    const { data: forYouData } = await supabase
-      .from('for_you_callouts')
-      .select('*')
-      .eq('trip_id', tripId)
-      .eq('member_id', memberId ?? '')
-
-    const myMemberData = membersData?.find(m => m.id === memberId) ?? null
-    setTrip(tripData)
-    setMembers(membersData ?? [])
+    const myMemberData = (data.members ?? []).find((m: { id: string }) => m.id === memberId) ?? null
+    setTrip(data.trip)
+    setMembers(data.members ?? [])
     setMyMember(myMemberData)
-    setTasks(tasksData ?? [])
-    setForYou(forYouData ?? [])
-
-    if (myMemberData?.id) {
-      const { data: events } = await supabase
-        .from('brownie_events')
-        .select('event_type, points_earned')
-        .eq('member_id', myMemberData.id)
-        .eq('trip_id', tripId)
-      if (events) setBrownieEvents(events)
-    }
-
+    setTasks((data.tasks ?? []).filter((t: { member_id: string }) => t.member_id === memberId))
+    setForYou((data.forYou ?? []).filter((f: { member_id: string }) => f.member_id === memberId))
+    setBrownieEvents((data.brownieEvents ?? []).filter((e: { member_id: string }) => e.member_id === memberId))
     setLoading(false)
   }
 
@@ -126,7 +98,7 @@ export default function TripDashboard({ params }: { params: Promise<{ tripId: st
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto">
-        {tab === 'plan' && <PlanTab trip={trip} forYou={forYou} myMember={myMember} tripId={tripId} />}
+        {tab === 'plan' && <PlanTab trip={trip} forYou={forYou} myMember={myMember} tripId={tripId} members={members} />}
         {tab === 'tasks' && <TasksTab tasks={tasks} members={members} />}
         {tab === 'squad' && <SquadTab members={members} />}
         {tab === 'you' && <YouTab member={myMember} tasks={tasks} brownieEvents={brownieEvents} />}
@@ -176,9 +148,26 @@ function HypeScore({ members, tasks }: { members: Member[]; tasks: MissionTask[]
   )
 }
 
-function PlanTab({ trip, forYou, myMember, tripId }: { trip: Trip; forYou: ForYouCallout[]; myMember: Member | null; tripId: string }) {
+function PlanTab({ trip, forYou, myMember, tripId, members }: { trip: Trip; forYou: ForYouCallout[]; myMember: Member | null; tripId: string; members: Member[] }) {
   const router = useRouter()
   const [expandedDay, setExpandedDay] = useState<number | null>(0)
+
+  // Build date availability map from members' special_requests JSON
+  const travelMonth = trip.departure_date ? trip.departure_date.slice(0, 7) : null
+  const dateAvailability: Record<string, number> = {}
+  for (const m of members) {
+    if (!m.special_requests) continue
+    try {
+      const parsed = JSON.parse(m.special_requests)
+      if (Array.isArray(parsed.available_dates)) {
+        for (const d of parsed.available_dates) {
+          dateAvailability[d] = (dateAvailability[d] ?? 0) + 1
+        }
+      }
+    } catch { /* plain text special_requests, skip */ }
+  }
+  const hasDateData = Object.keys(dateAvailability).length > 0
+  const maxCount = hasDateData ? Math.max(...Object.values(dateAvailability)) : 0
 
   return (
     <div className="px-5 space-y-4 pt-2 pb-4">
@@ -215,6 +204,47 @@ function PlanTab({ trip, forYou, myMember, tripId }: { trip: Trip; forYou: ForYo
           <span className="text-sm font-bold" style={{ color: 'var(--accent)' }}>
             ₹{trip.group_budget_zone.min.toLocaleString('en-IN')}–₹{trip.group_budget_zone.max.toLocaleString('en-IN')}/person
           </span>
+        </div>
+      )}
+
+      {/* Date availability */}
+      {travelMonth && (
+        <div className="p-4 rounded-2xl" style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}>
+          <div className="text-xs font-medium mb-3" style={{ color: 'var(--accent)' }}>
+            📅 DATE AVAILABILITY — {new Date(travelMonth + '-01').toLocaleString('en-IN', { month: 'long', year: 'numeric' }).toUpperCase()}
+          </div>
+          {hasDateData ? (() => {
+            const [year, month] = travelMonth.split('-').map(Number)
+            const daysInMonth = new Date(year, month, 0).getDate()
+            const sortedDates = Object.entries(dateAvailability).sort((a, b) => b[1] - a[1])
+            const top3 = sortedDates.slice(0, 3)
+
+            return (
+              <div className="space-y-2">
+                <p className="text-xs mb-2" style={{ color: 'var(--muted)' }}>Most members available on:</p>
+                {top3.map(([date, count]) => {
+                  const d = new Date(date)
+                  const dayLabel = d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+                  const pct = Math.round((count / members.filter(m => m.status !== 'declined' && m.status !== 'dropped').length) * 100)
+                  return (
+                    <div key={date} className="flex items-center justify-between gap-3">
+                      <span className="text-sm font-medium">{dayLabel}</span>
+                      <div className="flex items-center gap-2 flex-1 justify-end">
+                        <div className="h-1.5 rounded-full flex-1 max-w-24" style={{ background: 'var(--card-border)' }}>
+                          <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, background: 'var(--accent)' }} />
+                        </div>
+                        <span className="text-xs font-medium" style={{ color: 'var(--accent)' }}>{count}/{daysInMonth > 0 ? members.filter(m => m.status !== 'declined' && m.status !== 'dropped').length : count}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })() : (
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>
+              Waiting for squad to submit their availability…
+            </p>
+          )}
         </div>
       )}
 

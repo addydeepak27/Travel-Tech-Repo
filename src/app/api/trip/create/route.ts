@@ -25,8 +25,7 @@ export async function POST(req: NextRequest) {
     organizerEmail,
     memberEmails,
     destinationMode,
-    departureDate,
-    returnDate,
+    travelMonth,
   } = await req.json()
 
   if (!destinations?.length || !organizerEmail) {
@@ -59,8 +58,8 @@ export async function POST(req: NextRequest) {
       confirmed_destination: isOrganizerPick ? (destinationOptionsValue[0]?.name ?? destinationOptionsValue[0]) : null,
       gamification_enabled: true,
       travel_code: travelCode,
-      departure_date: departureDate ?? null,
-      return_date: returnDate ?? null,
+      departure_date: travelMonth ? `${travelMonth}-01` : null,
+      return_date: null,
       status_updated_at: new Date().toISOString(),
     })
     .select()

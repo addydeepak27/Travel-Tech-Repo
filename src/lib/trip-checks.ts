@@ -31,10 +31,13 @@ export async function checkAndComputeBudgetZone(
   const sorted = [...tiers].sort((a, b) => tierOrder.indexOf(a) - tierOrder.indexOf(b))
   const medianTier = sorted[Math.floor(sorted.length / 2)]
 
-  const tierMeta = BUDGET_TIER_META[medianTier]
-  const rangeParts = tierMeta.range.replace(/[₹,+<]/g, '').trim().split('–')
-  const minBudget = parseInt(rangeParts[0]) || 5000
-  const maxBudget = rangeParts[1] ? parseInt(rangeParts[1]) : minBudget * 2
+  const tierBudgetMap: Record<BudgetTier, { min: number; max: number }> = {
+    backpacker:  { min: 0,       max: 50000   },
+    comfortable: { min: 50000,   max: 100000  },
+    premium:     { min: 100000,  max: 500000  },
+    luxury:      { min: 500000,  max: 1000000 },
+  }
+  const { min: minBudget, max: maxBudget } = tierBudgetMap[medianTier]
 
   await db.from('trips').update({
     group_budget_zone: { min: minBudget, max: maxBudget },
