@@ -42,10 +42,15 @@ export async function POST(req: NextRequest) {
 
   const organizerAvatar: AvatarType = 'planner'
 
-  const tripName = `${Array.isArray(destinations) ? destinations[0]?.name ?? destinations[0] : destinations} or Bust`
   const isOrganizerPick = destinationMode === 'organizer_pick'
 
   const destinationOptionsValue = Array.isArray(destinations) ? destinations : [destinations]
+  const destNames = destinationOptionsValue.map((d: { name?: string } | string) => (typeof d === 'object' ? d?.name : d) ?? d)
+  const tripName = isOrganizerPick
+    ? `${destNames[0]} or Bust`
+    : destNames.length > 1
+      ? `${destNames.slice(0, -1).join(', ')} or ${destNames[destNames.length - 1]}`
+      : `${destNames[0]} Trip`
 
   const { data: trip, error: tripError } = await db
     .from('trips')
@@ -126,7 +131,7 @@ export async function POST(req: NextRequest) {
     const personalLink = `${appUrl}/join/${trip.id}?m=${m.id}`
     await sendWhatsApp(
       m.phone,
-      `*The Planner* is organising *${tripName}* 🌊\n\n🎭 Roles needed: ${neededRoles}\n_(each role owns part of the planning)_\n\nJoin → ${personalLink}\n\nReply YES to join or NO to decline.\n\n_Reply STOP anytime to opt out._`
+      `*${organizerName ?? 'The Planner'}* is organising *${tripName}* 🌊\n\nDon't be the one friend who finds out about this trip from their Instagram stories 😬\n\n🎭 Roles needed: ${neededRoles}\n_(each role owns part of the planning)_\n\nJoin → ${personalLink}\n\nReply YES to join or NO to decline.\n\n_Reply STOP anytime to opt out._`
     )
   }
 

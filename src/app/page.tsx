@@ -154,7 +154,9 @@ export default function HomePage() {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin
     const joinUrl = `${appUrl}/join/${tripId}`
     const text = encodeURIComponent(
-      `Hey! I'm planning *${tripName}* on TripSquad 🌊\n\nJoin here → ${joinUrl}\n\nOr enter code *${tripCode}* at ${appUrl}\n\n_(Takes 2 mins — pick your role and budget anonymously)_`
+      destMode === 'group_vote'
+        ? `*${name}* is cooking up *${tripName}* on Toh Chale 🌊\n\nDon't be the one friend who finds out about this trip from their Instagram stories 😬\n\nJoin to vote on the final destination 🗳️\n\nJoin here → ${joinUrl}\n\nOr enter code *${tripCode}* at ${appUrl}\n\n_(Takes 2 mins — pick your role and vote anonymously)_`
+        : `*${name}* is planning *${tripName}* on Toh Chale 🌊\n\nDon't be the one friend who finds out about this trip from their Instagram stories 😬\n\nJoin here → ${joinUrl}\n\nOr enter code *${tripCode}* at ${appUrl}\n\n_(Takes 2 mins — pick your role and budget anonymously)_`
     )
     window.open(`https://wa.me/?text=${text}`, '_blank')
   }
@@ -171,7 +173,7 @@ export default function HomePage() {
       <div className="min-h-dvh flex flex-col px-5 safe-top safe-bottom" style={{ background: 'var(--background)' }}>
         <div className="pt-12 pb-8 text-center">
           <div className="text-4xl mb-3">🌊</div>
-          <h1 className="text-2xl font-bold">TripSquad</h1>
+          <h1 className="text-2xl font-bold">Toh Chale</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>Group travel, finally stress-free</p>
         </div>
 
@@ -600,8 +602,14 @@ export default function HomePage() {
       <div className="min-h-dvh flex flex-col px-5 safe-top safe-bottom" style={{ background: 'var(--background)' }}>
         <div className="pt-12 pb-6 text-center">
           <div className="text-4xl mb-3">🎉</div>
-          <h1 className="text-2xl font-bold">{tripName} is live!</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>Invites sent via WhatsApp. Share the code below to add more people.</p>
+          <h1 className="text-2xl font-bold">
+            {destMode === 'group_vote' ? `${tripName} — squad, it's time to vote!` : `${tripName} is live!`}
+          </h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>
+            {destMode === 'group_vote'
+              ? 'Invites sent via WhatsApp. Once everyone joins, the squad votes on the final destination.'
+              : 'Invites sent via WhatsApp. Share the code below to add more people.'}
+          </p>
         </div>
 
         <div

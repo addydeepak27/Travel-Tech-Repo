@@ -2,9 +2,9 @@
 
 import { useState, useEffect, use } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
 import { AVATAR_META } from '@/types'
 import type { AvatarType } from '@/types'
+import { supabase } from '@/lib/supabase'
 
 export default function JoinPage({ params }: { params: Promise<{ tripId: string }> }) {
   const { tripId } = use(params)
@@ -13,49 +13,59 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
   const router = useRouter()
 
   const [tripName, setTripName] = useState('')
-  const [destinations, setDestinations] = useState<string[]>([])
+  const [destinations, setDestinations] = useState<{ name: string; emoji?: string }[]>([])
   const [organizerAvatar, setOrganizerAvatar] = useState<AvatarType | null>(null)
+  const [loadError, setLoadError] = useState(false)
+  const [retryCount, setRetryCount] = useState(0)
   const [memberCount, setMemberCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [responding, setResponding] = useState(false)
   const [alreadyResponded, setAlreadyResponded] = useState<'in' | 'out' | null>(null)
 
   useEffect(() => {
-    async function load() {
-      const { data } = await supabase
-        .from('trips')
-        .select('name, destination_options, organizer_id, members(id, avatar, status, opt_out)')
-        .eq('id', tripId)
-        .single()
-
-      if (!data) return
-
-      setTripName(data.name)
-      setDestinations(data.destination_options ?? [])
-      setMemberCount(data.members?.length ?? 0)
-
-      const org = data.members?.find((m: { id: string }) => m.id === data.organizer_id)
-      if (org?.avatar) setOrganizerAvatar(org.avatar as AvatarType)
-
-      // Check if this member already responded
-      if (memberId) {
-        const me = data.members?.find((m: { id: string }) => m.id === memberId)
-        if (me?.opt_out) {
-          setAlreadyResponded('out')
-          setLoading(false)
-          return
+    async function load(attempt = 0) {
+      try {
+        const res = await fetch(`/api/trip/${tripId}/join-info`)
+        if (!res.ok) {
+          if (attempt < 2) { setTimeout(() => load(attempt + 1), 800); return }
+          setLoadError(true); setLoading(false); return
         }
-        if (me?.status === 'consented' || me?.status === 'avatar_selected' || me?.status === 'active') {
-          setAlreadyResponded('in')
-        } else if (me?.status === 'declined') {
-          setAlreadyResponded('out')
+        const data = await res.json()
+
+        setTripName(data.name)
+
+        // destination_options is JSONB: array of { name, emoji } objects or plain strings
+        const dests = (data.destination_options ?? []).map((d: { name?: string; emoji?: string } | string) =>
+          typeof d === 'string' ? { name: d } : { name: d.name ?? '', emoji: d.emoji }
+        )
+        setDestinations(dests)
+        setMemberCount(data.members?.length ?? 0)
+
+        const org = data.members?.find((m: { id: string }) => m.id === data.organizer_id)
+        if (org?.avatar) setOrganizerAvatar(org.avatar as AvatarType)
+
+        // Check if this member already responded
+        if (memberId) {
+          const me = data.members?.find((m: { id: string }) => m.id === memberId)
+          if (me?.opt_out) {
+            setAlreadyResponded('out')
+            setLoading(false)
+            return
+          }
+          if (me?.status === 'consented' || me?.status === 'avatar_selected' || me?.status === 'active') {
+            setAlreadyResponded('in')
+          } else if (me?.status === 'declined') {
+            setAlreadyResponded('out')
+          }
         }
+      } catch {
+        if (attempt < 2) { setTimeout(() => load(attempt + 1), 800); return }
+        setLoadError(true)
       }
-
       setLoading(false)
     }
-    load()
-  }, [tripId, memberId])
+    load(0)
+  }, [tripId, memberId, retryCount])
 
   async function handleConsent(choice: 'in' | 'out') {
     if (responding || !memberId) return
@@ -89,6 +99,25 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
           <div className="text-3xl animate-pulse">✈️</div>
           <p className="text-sm" style={{ color: 'var(--muted)' }}>Loading trip details...</p>
         </div>
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-dvh flex flex-col items-center justify-center px-5 text-center safe-top safe-bottom">
+        <div className="text-4xl mb-4">🔍</div>
+        <h1 className="text-xl font-bold mb-2">Trip not found</h1>
+        <p className="text-sm mb-5" style={{ color: 'var(--muted)' }}>
+          This invite link may be invalid or expired. Ask the organiser to share a fresh link.
+        </p>
+        <button
+          onClick={() => { setLoadError(false); setLoading(true); setRetryCount(c => c + 1) }}
+          className="px-5 py-2.5 rounded-xl text-sm font-semibold"
+          style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
+        >
+          Try again
+        </button>
       </div>
     )
   }
@@ -155,11 +184,11 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
           <div className="flex flex-wrap gap-2">
             {destinations.map(d => (
               <span
-                key={d}
+                key={d.name}
                 className="px-3 py-1 rounded-full text-sm font-medium"
                 style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}
               >
-                {d}
+                {d.emoji ? `${d.emoji} ` : ''}{d.name}
               </span>
             ))}
           </div>
