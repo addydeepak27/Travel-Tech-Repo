@@ -90,3 +90,7 @@
 ## Session: 2026-04-02 23:18
 **Changed:** next.config.ts src/app/api/claude/destinations/route.ts src/app/api/claude/hotels/route.ts src/app/api/claude/itinerary/route.ts src/app/api/claude/tips/route.ts src/app/api/cron/nudge/route.ts src/app/api/organizer/nudge/route.ts src/app/api/trip/create/route.ts src/app/itinerary/[tripId]/page.tsx src/app/join/[tripId]/page.tsx 
 **Recent commits:** 7f2d42e session log: 2026-04-02 23:10 20f0bb2 session log: 2026-04-02 23:09 1be53a7 session log: 2026-04-02 23:02 
+
+## Session: 2026-04-02 23:23
+**Changed:** src/app/organizer/[tripId]/page.tsx src/app/trip/[tripId]/page.tsx src/app/api/trip/[tripId]/dashboard-info/ src/app/api/trip/[tripId]/organizer-info/ 
+**Recent commits:** 59f0bfc feat: email-native platform — remove WhatsApp/Twilio entirely 7cff857 session log: 2026-04-02 23:18 7f2d42e session log: 2026-04-02 23:10 
