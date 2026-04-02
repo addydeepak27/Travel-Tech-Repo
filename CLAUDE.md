@@ -58,3 +58,7 @@
 ## Session: 2026-04-02 16:54
 **Changed:** src/app/api/trip/create/route.ts src/app/avatar/[tripId]/[memberId]/page.tsx src/app/join/[tripId]/page.tsx src/app/page.tsx TOH_CHALE_PROGRESS.md src/app/api/trip/[tripId]/ 
 **Recent commits:** fe0ed1b session log: 2026-04-02 16:48 7ac5355 session log: 2026-04-02 16:47 fd36d68 session log: 2026-04-02 16:46 
+
+## Session: 2026-04-02 22:58
+**Changed:** src/app/page.tsx 
+**Recent commits:** d92af21 feat: invite link fix, avatar overhaul, mode-aware copy, Toh Chale rebrand f75bf3c session log: 2026-04-02 16:54 fe0ed1b session log: 2026-04-02 16:48 
