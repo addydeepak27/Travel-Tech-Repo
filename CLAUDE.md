@@ -34,6 +34,12 @@
 - Dissent/fallback voting: re-vote when members disagree on itinerary days
 - Organizer abandonment escalation: auto-transfer after 5 days inactivity
 
+## Travel date feature (built Apr 2, Session 3)
+- Organizer picks **month of travel** (required, replaces departure/return date pickers) → stored as `departure_date: YYYY-MM-01`
+- Member questionnaire now 6 steps: Q5 = date chips for travel month (multi-select), Q6 = special requests (optional)
+- `available_dates` stored in `special_requests` as JSON: `{"available_dates": [...], "notes": "..."}`
+- Trip dashboard Plan tab: "📅 DATE AVAILABILITY" card shows top 3 dates with most members available + bar chart
+
 ---
 <!-- SESSION LOG: auto-appended on session end -->
 
@@ -110,3 +116,19 @@
 ## Session: 2026-04-02 23:38
 **Changed:** src/app/api/trip/create/route.ts src/app/organizer/[tripId]/page.tsx src/app/page.tsx src/app/preferences/[tripId]/[memberId]/page.tsx src/app/trip/[tripId]/page.tsx src/lib/trip-checks.ts src/types/index.ts src/app/api/trip/[tripId]/dashboard-info/ src/app/api/trip/[tripId]/organizer-info/ 
 **Recent commits:** 30ef890 session log: 2026-04-02 23:29 9e531b2 session log: 2026-04-02 23:28 3f2f66b session log: 2026-04-02 23:25 
+
+## Session: 2026-04-02 (Session 3 — travel date feature)
+**Built:**
+- Trip dashboard RLS fix: `src/app/trip/[tripId]/page.tsx` + `src/app/organizer/[tripId]/page.tsx` — all DB reads via service-role API routes (`/dashboard-info`, `/organizer-info`)
+- Budget tier expansion: ₹0–50k / ₹50k–1L / ₹1L–5L / No limit — `src/app/preferences/[tripId]/[memberId]/page.tsx`, `src/types/index.ts`, `src/lib/trip-checks.ts`
+- Landing page redesign (Booking.com-inspired, stronger value prop)
+- **Travel date feature:**
+  - Organizer: month selector (required) replaces departure/return date pickers — `src/app/page.tsx`
+  - Create API: accepts `travelMonth`, stores as `departure_date: YYYY-MM-01` — `src/app/api/trip/create/route.ts`
+  - Questionnaire: 6 steps (was 5), Q5 = date chips for travel month, multi-select — `src/app/preferences/[tripId]/[memberId]/page.tsx`
+  - Dashboard Plan tab: date availability card (top 3 dates, bar chart) — `src/app/trip/[tripId]/page.tsx`
+  - Storage: `available_dates` in `special_requests` as JSON `{"available_dates": [...], "notes": "..."}` — no DB migration needed
+
+## Session: 2026-04-02 23:40
+**Changed:** src/app/api/trip/create/route.ts src/app/organizer/[tripId]/page.tsx src/app/page.tsx src/app/preferences/[tripId]/[memberId]/page.tsx src/app/trip/[tripId]/page.tsx src/lib/trip-checks.ts src/types/index.ts src/app/api/trip/[tripId]/dashboard-info/ src/app/api/trip/[tripId]/organizer-info/ 
+**Recent commits:** 66b3045 session log: 2026-04-02 23:38 30ef890 session log: 2026-04-02 23:29 9e531b2 session log: 2026-04-02 23:28 
