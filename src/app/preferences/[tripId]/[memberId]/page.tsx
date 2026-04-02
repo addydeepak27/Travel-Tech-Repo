@@ -101,7 +101,7 @@ export default function PreferencesPage({
         <div className="text-5xl mb-4">🎉</div>
         <h1 className="text-2xl font-bold mb-2">You're all set!</h1>
         <p className="text-sm mb-6" style={{ color: 'var(--muted)' }}>
-          Your preferences have been added to the group. WhatsApp will guide you from here.
+          Your preferences have been added to the group. We'll email you as the plan comes together.
         </p>
         <button
           onClick={() => router.push(`/trip/${tripId}`)}

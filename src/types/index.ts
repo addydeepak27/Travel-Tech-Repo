@@ -69,7 +69,7 @@ export interface Trip {
 export interface Member {
   id: string
   trip_id: string
-  phone: string
+  phone: string | null
   name: string | null
   avatar: AvatarType | null
   avatar_suffix: string | null
@@ -80,7 +80,7 @@ export interface Member {
   points: number
   opt_out: boolean
   joined_at: string | null
-  email: string | null
+  email: string
   activity_pref: string | null
   trip_priority: string | null
   special_requests: string | null

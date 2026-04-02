@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase'
-import { sendWhatsApp } from '@/lib/twilio'
+import { sendEmail } from '@/lib/email'
 import { ACTIVE_MEMBER_STATUSES, AVATAR_ASSUMED_BUDGET, getVoteWindowHours } from '@/lib/constants'
 import { AVATAR_META, BUDGET_TIER_META } from '@/types'
 import type { AvatarType, BudgetTier } from '@/types'
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
       const votedIds = new Set((voted ?? []).map((v: { member_id: string }) => v.member_id))
 
       const { data: activeMembers } = await db.from('members')
-        .select('id, phone, name, brownie_points')
+        .select('id, email, name, brownie_points')
         .eq('trip_id', trip.id)
         .in('status', ACTIVE_MEMBER_STATUSES)
         .eq('opt_out', false)
@@ -66,9 +66,10 @@ export async function GET(req: NextRequest) {
             : null
           const winner = typeof firstOpt === 'object' ? firstOpt?.name : firstOpt ?? 'Option 1'
           const organiser = (activeMembers ?? []).find((m: { id: string }) => m.id === trip.organizer_id)
-          if (organiser?.phone) {
-            await sendWhatsApp(organiser.phone,
-              `No one voted for *${trip.name}*'s ${voteType}. We've gone with *${winner}* as the default. Change it from your dashboard → ${appUrl}/organizer/${trip.id}`)
+          if (organiser?.email) {
+            await sendEmail(organiser.email,
+              `No votes for ${trip.name} — defaulting to ${winner}`,
+              `No one voted for ${trip.name}'s ${voteType}. We've gone with ${winner} as the default. Change it from your dashboard → ${appUrl}/organizer/${trip.id}`)
           }
         } else {
           const topCount = entries[0][1]
@@ -77,10 +78,11 @@ export async function GET(req: NextRequest) {
 
           if (tied.length > 1 && voteType !== 'destination') {
             const organiser = (activeMembers ?? []).find((m: { id: string }) => m.id === trip.organizer_id)
-            if (organiser?.phone) {
+            if (organiser?.email) {
               const opts = tied.map(([v], i) => `[${i + 1}] ${v}`).join('\n')
-              await sendWhatsApp(organiser.phone,
-                `🔵 Tied vote for *${trip.name}* ${voteType}.\n\n${opts}\n\nYou decide — reply 1 or ${tied.length}.`)
+              await sendEmail(organiser.email,
+                `Tied vote for ${trip.name} ${voteType} — you decide`,
+                `Tied vote for ${trip.name} ${voteType}.\n\n${opts}\n\nYou decide — reply with your choice.`)
               await db.from('trips').update({ status: `${voteType}_tiebreaker` as never }).eq('id', trip.id)
               continue
             }
@@ -93,14 +95,17 @@ export async function GET(req: NextRequest) {
           }).eq('id', trip.id)
 
           for (const m of nonVoters) {
-            await sendWhatsApp(m.phone,
-              `Voting closed for *${trip.name}*. *${winner}* it is! Here's what's happening next → ${appUrl}/trip/${trip.id}`)
+            if (!m.email) continue
+            await sendEmail(m.email,
+              `Voting closed for ${trip.name} — ${winner} it is!`,
+              `Voting closed for ${trip.name}. ${winner} it is! Here's what's happening next → ${appUrl}/trip/${trip.id}`)
           }
         }
         continue
       }
 
       for (const member of nonVoters) {
+        if (!member.email) continue
         let stage: 1 | 2 | 3 | null = null
         if (hoursOpen >= stageThresholds[2]) stage = 3
         else if (hoursOpen >= stageThresholds[1]) stage = 2
@@ -116,13 +121,18 @@ export async function GET(req: NextRequest) {
         const totalActive = (activeMembers ?? []).length
         const decayedPoints = Math.max(totalActive - Math.floor(hoursOpen), 1)
 
+        const subjects: Record<1 | 2 | 3, string> = {
+          1: `Reminder: ${trip.name} ${voteType} vote is still open`,
+          2: `${nonVoters.length - 1} people voted — you haven't yet`,
+          3: `Last chance — ${trip.name} vote closes soon`,
+        }
         const msgs: Record<1 | 2 | 3, string> = {
-          1: `👋 Quick reminder — *${trip.name}* ${voteType} vote is still open.\n\nYou're one of ${nonVoters.length} yet to vote. Takes 5 seconds.\n\nReply with your pick, or *options* to see the choices again.`,
-          2: `⏳ *${nonVoters.length - 1} people voted* for *${trip.name}* ${voteType}. You haven't yet.\n\nIf you don't vote, the group picks without you.\n\n🍫 *${decayedPoints} brownie points* available if you vote now.\n\nReply *options* to see the choices.`,
-          3: `🚨 *Last chance* — *${trip.name}* vote closes soon.\n\nGroup's majority pick goes forward automatically if you don't respond.\n\nReply *options* for the choices 👆`,
+          1: `Quick reminder — ${trip.name} ${voteType} vote is still open.\n\nYou're one of ${nonVoters.length} yet to vote. Takes 5 seconds.\n\nVote here → ${appUrl}/trip/${trip.id}`,
+          2: `${nonVoters.length - 1} people voted for ${trip.name} ${voteType}. You haven't yet.\n\nIf you don't vote, the group picks without you.\n\n${decayedPoints} brownie points available if you vote now.\n\nVote here → ${appUrl}/trip/${trip.id}`,
+          3: `Last chance — ${trip.name} vote closes soon.\n\nGroup's majority pick goes forward automatically if you don't respond.\n\nVote here → ${appUrl}/trip/${trip.id}`,
         }
 
-        await sendWhatsApp(member.phone, msgs[stage])
+        await sendEmail(member.email, subjects[stage], msgs[stage])
         await db.from('nudges').insert({ trip_id: trip.id, member_id: member.id, vote_type: voteType, stage })
       }
     }
@@ -131,11 +141,12 @@ export async function GET(req: NextRequest) {
   // ── 2. Questionnaire nudges ─────────────────────────────────────────────────
   const questStates = ['consented', 'avatar_selection', 'pref_q1', 'pref_q2', 'pref_q3', 'pref_q4']
   const { data: questMembers } = await db.from('members')
-    .select('id, phone, name, trip_id, status, updated_at, trips(name, departure_date)')
+    .select('id, email, name, trip_id, status, updated_at, trips(name, departure_date)')
     .in('status', questStates)
     .eq('opt_out', false)
 
   for (const member of questMembers ?? []) {
+    if (!member.email) continue
     const trip = (member as unknown as { trips?: { name: string; departure_date: string | null } }).trips
     if (!trip) continue
     const hoursElapsed = (now - new Date((member as { updated_at?: string }).updated_at ?? now).getTime()) / 3600000
@@ -152,24 +163,30 @@ export async function GET(req: NextRequest) {
       .eq('vote_type', 'questionnaire').eq('stage', stage).single()
     if (existing) continue
 
+    const subjects: Record<1 | 2 | 3, string> = {
+      1: `Quick questions for ${trip.name} — takes 2 mins`,
+      2: `The group is waiting on your preferences for ${trip.name}`,
+      3: `Last nudge — your squad needs your input for ${trip.name}`,
+    }
     const msgs: Record<1 | 2 | 3, string> = {
-      1: `👋 Just 4 quick questions and you're all set for *${trip.name}*! Reply *hi* anytime to continue.`,
-      2: `The group is waiting on your preferences for *${trip.name}*. Reply *hi* to pick up where you left off.`,
-      3: `Last nudge — your squad needs your input to plan *${trip.name}*. Reply *hi* to answer 4 quick questions.`,
+      1: `Just 4 quick questions and you're all set for ${trip.name}!\n\nContinue here → ${appUrl}/preferences/${member.trip_id}/${member.id}`,
+      2: `The group is waiting on your preferences for ${trip.name}. Pick up where you left off → ${appUrl}/preferences/${member.trip_id}/${member.id}`,
+      3: `Last nudge — your squad needs your input to plan ${trip.name}. Answer 4 quick questions → ${appUrl}/preferences/${member.trip_id}/${member.id}`,
     }
 
-    await sendWhatsApp(member.phone, msgs[stage])
+    await sendEmail(member.email, subjects[stage], msgs[stage])
     await db.from('nudges').insert({ trip_id: member.trip_id, member_id: member.id, vote_type: 'questionnaire', stage })
   }
 
   // ── 3. Auto-assign avatar at T+24h ─────────────────────────────────────────
   const { data: unassigned } = await db.from('members')
-    .select('id, phone, trip_id, name, updated_at')
+    .select('id, email, trip_id, name, updated_at')
     .eq('status', 'consented')
     .is('avatar', null)
     .eq('opt_out', false)
 
   for (const member of unassigned ?? []) {
+    if (!member.email) continue
     const hours = (now - new Date((member as { updated_at?: string }).updated_at ?? now).getTime()) / 3600000
     if (hours < 24) continue
 
@@ -191,13 +208,14 @@ export async function GET(req: NextRequest) {
 
     const { data: tripData } = await db.from('trips').select('name').eq('id', member.trip_id).single()
 
-    await sendWhatsApp(member.phone,
-      `We've given you *${AVATAR_META[leastTaken].label}* for *${tripData?.name ?? 'your trip'}* — you can swap it in the next 12h 👇\n${appUrl}/avatar/${member.trip_id}/${member.id}`)
+    await sendEmail(member.email,
+      `You've been assigned ${AVATAR_META[leastTaken].label} for ${tripData?.name ?? 'your trip'}`,
+      `We've given you ${AVATAR_META[leastTaken].label} for ${tripData?.name ?? 'your trip'} — you can swap it in the next 12h.\n\nChange your role → ${appUrl}/avatar/${member.trip_id}/${member.id}`)
   }
 
   // ── 4. Budget assumed default at T+18h ────────────────────────────────────
   const { data: nobudget } = await db.from('members')
-    .select('id, phone, trip_id, avatar, updated_at')
+    .select('id, email, trip_id, avatar, updated_at')
     .not('avatar', 'is', null)
     .is('budget_tier', null)
     .in('status', ['avatar_selection', 'active'])
@@ -205,6 +223,7 @@ export async function GET(req: NextRequest) {
     .eq('budget_assumed', false)
 
   for (const member of nobudget ?? []) {
+    if (!member.email) continue
     const hours = (now - new Date((member as { updated_at?: string }).updated_at ?? now).getTime()) / 3600000
     if (hours < 18) continue
 
@@ -218,13 +237,14 @@ export async function GET(req: NextRequest) {
       budget_assumed: true,
     }).eq('id', member.id)
 
-    await sendWhatsApp(member.phone,
-      `We've assumed *${tierMeta.label}* budget (${tierMeta.range}) for you based on your role.\n\nWrong? Fix it — reply:\n[1] Backpacker <₹5k\n[2] Comfortable ₹5–10k\n[3] Premium ₹10–20k\n[4] Luxury ₹20k+`)
+    await sendEmail(member.email,
+      `Budget assumed for your trip — want to change it?`,
+      `We've assumed ${tierMeta.label} budget (${tierMeta.range}) for you based on your role.\n\nWant to change it? Update your budget here → ${appUrl}/preferences/${member.trip_id}/${member.id}`)
   }
 
   // ── 5. Zero-member trip auto-cancel ───────────────────────────────────────
   const { data: staleTrips } = await db.from('trips')
-    .select('id, name, organizer_id, status_updated_at, members(id, phone, status)')
+    .select('id, name, organizer_id, status_updated_at, members(id, email, status)')
     .eq('status', 'inviting')
     .lt('status_updated_at', new Date(now - 48 * 3600000).toISOString())
 
@@ -237,9 +257,10 @@ export async function GET(req: NextRequest) {
     await db.from('trips').update({ status: 'cancelled', status_updated_at: new Date().toISOString() }).eq('id', trip.id)
 
     const organiser = (trip.members ?? []).find((m: { id: string }) => m.id === trip.organizer_id)
-    if (organiser?.phone) {
-      await sendWhatsApp(organiser.phone,
-        `Your trip *${trip.name}* was auto-cancelled — no one joined in 48 hours. Start a new one at ${appUrl} 🌊`)
+    if (organiser?.email) {
+      await sendEmail(organiser.email,
+        `${trip.name} was auto-cancelled — no one joined`,
+        `Your trip ${trip.name} was auto-cancelled — no one joined in 48 hours. Start a new one at ${appUrl} 🌊`)
     }
   }
 
@@ -247,7 +268,7 @@ export async function GET(req: NextRequest) {
   const todayStr = new Date().toISOString().split('T')[0]
   const t14 = new Date(now + 14 * 86400000).toISOString().split('T')[0]
   const { data: countdownTrips } = await db.from('trips')
-    .select('id, name, confirmed_destination, confirmed_hotel, itinerary, departure_date, members(id, phone, avatar, opt_out, status, name)')
+    .select('id, name, confirmed_destination, confirmed_hotel, itinerary, departure_date, members(id, email, avatar, opt_out, status, name)')
     .eq('status', 'locked')
     .gte('departure_date', todayStr)
     .lte('departure_date', t14)
@@ -259,6 +280,7 @@ export async function GET(req: NextRequest) {
     for (const member of (trip.members ?? []).filter((m: { status: string; opt_out: boolean }) =>
       m.status === 'active' && !m.opt_out
     )) {
+      if (!member.email) continue
       const { data: alreadySent } = await db.from('nudges').select('id')
         .eq('trip_id', trip.id).eq('member_id', member.id)
         .eq('vote_type', `countdown_${daysOut}`).single()
@@ -266,16 +288,16 @@ export async function GET(req: NextRequest) {
 
       let msg = ''
       if (daysOut >= 8) {
-        msg = `In *${daysOut} days*: You're going to *${trip.confirmed_destination}*! ${(trip.confirmed_hotel as { name?: string })?.name ? `Staying at ${(trip.confirmed_hotel as { name: string }).name} 🏨` : ''}`
+        msg = `In ${daysOut} days: You're going to ${trip.confirmed_destination}! ${(trip.confirmed_hotel as { name?: string })?.name ? `Staying at ${(trip.confirmed_hotel as { name: string }).name} 🏨` : ''}`
       } else if (daysOut >= 2) {
         const day1 = (trip.itinerary as { activities?: { title: string }[] }[] | null)?.[0]
         const firstActivity = day1?.activities?.[0]?.title
-        msg = `In *${daysOut} days*: ${firstActivity ? `Day 1 plan includes ${firstActivity}.` : `${trip.confirmed_destination} is almost here!`} 🎉`
+        msg = `In ${daysOut} days: ${firstActivity ? `Day 1 plan includes ${firstActivity}.` : `${trip.confirmed_destination} is almost here!`} 🎉`
       } else {
-        msg = `*${trip.name}* is tomorrow! Everything is planned. Just pack. 🎒`
+        msg = `${trip.name} is tomorrow! Everything is planned. Just pack. 🎒`
       }
 
-      await sendWhatsApp(member.phone, msg)
+      await sendEmail(member.email, `${trip.name} — ${daysOut} day${daysOut > 1 ? 's' : ''} to go!`, msg)
       await db.from('nudges').insert({
         trip_id: trip.id, member_id: member.id,
         vote_type: `countdown_${daysOut}`, stage: 1,

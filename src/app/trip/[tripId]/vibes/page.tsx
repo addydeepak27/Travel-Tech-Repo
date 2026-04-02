@@ -182,7 +182,7 @@ export default function VibesPage({ params }: { params: Promise<{ tripId: string
 
         {responded === 0 ? (
           <p className="text-sm text-center py-8" style={{ color: 'var(--muted)' }}>
-            No responses yet. Check back once your squad answers their preferences on WhatsApp.
+            No responses yet. Check back once your squad answers their preferences.
           </p>
         ) : (
           <>

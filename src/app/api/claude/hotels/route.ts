@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase'
 import { generateHotels } from '@/lib/claude'
-import { sendWhatsApp } from '@/lib/twilio'
+import { sendEmail } from '@/lib/email'
 import type { AvatarType, BudgetTier } from '@/types'
 
 export async function POST(req: NextRequest) {
@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
 
   const { data: trip } = await db
     .from('trips')
-    .select('name, confirmed_destination, weighted_median_tier, departure_date, return_date, members(id, avatar, status, phone)')
+    .select('name, confirmed_destination, weighted_median_tier, departure_date, return_date, members(id, avatar, status, email)')
     .eq('id', tripId)
     .single()
 
@@ -65,12 +65,12 @@ export async function POST(req: NextRequest) {
     .join('\n')
 
   for (const m of activeMembers) {
-    if (m.phone) {
-      await sendWhatsApp(
-        m.phone,
-        `3 hotels shortlisted for *${trip.confirmed_destination}* within your group budget.\n\nSee details → ${hotelLink}\n\nVote for your pick:\n${voteOptions}\n\nReply 1, 2, or 3`
-      )
-    }
+    if (!m.email) continue
+    await sendEmail(
+      m.email,
+      `3 hotels shortlisted for ${trip.confirmed_destination}`,
+      `3 hotels shortlisted for ${trip.confirmed_destination} within your group budget.\n\nSee details + vote → ${hotelLink}\n\nOptions:\n${voteOptions}`
+    )
   }
 
   return NextResponse.json({ ok: true, hotels: hotelsWithMaps })

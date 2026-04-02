@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase'
 import { generateItinerary } from '@/lib/claude'
-import { sendWhatsApp } from '@/lib/twilio'
+import { sendEmail } from '@/lib/email'
 import type { AvatarType, BudgetTier, Hotel, VotePace } from '@/types'
 
 export async function POST(req: NextRequest) {
@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
 
   const { data: trip } = await db
     .from('trips')
-    .select('name, confirmed_destination, confirmed_hotel, weighted_median_tier, departure_date, return_date, members(id, avatar, budget_tier, status, pace_vote, spend_vote, phone)')
+    .select('name, confirmed_destination, confirmed_hotel, weighted_median_tier, departure_date, return_date, members(id, avatar, budget_tier, status, pace_vote, spend_vote, email)')
     .eq('id', tripId)
     .single()
 
@@ -86,12 +86,12 @@ export async function POST(req: NextRequest) {
   const itineraryLink = `${appUrl}/itinerary/${tripId}`
 
   for (const m of activeMembers) {
-    if (m.phone) {
-      await sendWhatsApp(
-        m.phone,
-        `Here's your *${trip.confirmed_destination}* plan 👇\n${itineraryLink}\n\n[1] Looks good ✅\n[2] Something's off 🤔\n\nReply 1 to approve, 2 to flag an issue.`
-      )
-    }
+    if (!m.email) continue
+    await sendEmail(
+      m.email,
+      `Your ${trip.confirmed_destination} itinerary is ready 🎉`,
+      `Here's your ${trip.confirmed_destination} plan 👇\n${itineraryLink}\n\nVote to approve or flag an issue at the link above.`
+    )
   }
 
   return NextResponse.json({ ok: true, days: itinerary.length })

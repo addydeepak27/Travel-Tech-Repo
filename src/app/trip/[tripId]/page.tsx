@@ -445,7 +445,7 @@ const EVENT_LABELS: Record<string, string> = {
 function YouTab({ member, tasks, brownieEvents }: { member: Member | null; tasks: MissionTask[]; brownieEvents: { event_type: string; points_earned: number }[] }) {
   if (!member) return (
     <div className="px-5 pt-6 text-center">
-      <p className="text-sm" style={{ color: 'var(--muted)' }}>Open this link from the WhatsApp invite to see your profile.</p>
+      <p className="text-sm" style={{ color: 'var(--muted)' }}>Open this link from your invite email to see your profile.</p>
     </div>
   )
 

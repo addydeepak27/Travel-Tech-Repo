@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase'
 import { generateCostTips } from '@/lib/claude'
-import { sendWhatsApp } from '@/lib/twilio'
+import { sendEmail } from '@/lib/email'
 import type { BudgetTier } from '@/types'
 
 export async function POST(req: NextRequest) {
@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
 
   const { data: trip } = await db
     .from('trips')
-    .select('name, confirmed_destination, destination_options, group_budget_zone, weighted_median_tier, departure_date, return_date, organizer_id, members(id, phone, status)')
+    .select('name, confirmed_destination, destination_options, group_budget_zone, weighted_median_tier, departure_date, return_date, organizer_id, members(id, email, status)')
     .eq('id', tripId)
     .single()
 
@@ -34,10 +34,11 @@ export async function POST(req: NextRequest) {
 
   // Find organizer to notify
   const organizer = (trip.members ?? []).find((m: { id: string }) => m.id === trip.organizer_id)
-  if (organizer?.phone) {
+  if (organizer?.email) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL
-    await sendWhatsApp(
-      organizer.phone,
+    await sendEmail(
+      organizer.email,
+      `All budgets are in for ${trip.name}`,
       `All budgets are in. Group zone: ₹${budgetZone.min.toLocaleString('en-IN')}–₹${budgetZone.max.toLocaleString('en-IN')}/person.\n\n3 ways to stretch it further → ${appUrl}/organizer/${tripId}`
     )
   }

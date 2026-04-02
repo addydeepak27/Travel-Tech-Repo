@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase'
 import { generateDestinations } from '@/lib/claude'
-import { sendWhatsApp } from '@/lib/twilio'
+import { sendEmail } from '@/lib/email'
 import { AVATAR_META } from '@/types'
 import type { AvatarType, BudgetTier } from '@/types'
 
@@ -47,11 +47,12 @@ export async function POST(req: NextRequest) {
   // Send destination vote to all members
   const { data: members } = await db
     .from('members')
-    .select('phone, status')
+    .select('email, status')
     .eq('trip_id', tripId)
     .in('status', ['consented', 'active'])
     .eq('opt_out', false)
 
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL
   const optionLines = destinations
     .map((d, i) => {
       const hotelAnchor = d.hotel_range ? ` · 🏨 ${d.hotel_range}` : ''
@@ -60,9 +61,11 @@ export async function POST(req: NextRequest) {
     .join('\n')
 
   for (const m of members ?? []) {
-    await sendWhatsApp(
-      m.phone,
-      `Vote for *${trip.name}* destination — closes in 48h (earlier if everyone votes):\n\n${optionLines}\n\n_Hotel costs are estimates, not bookings_\n\nReply 1, 2, or 3`
+    if (!m.email) continue
+    await sendEmail(
+      m.email,
+      `Vote for ${trip.name} destination — closes in 48h`,
+      `Vote for ${trip.name} destination — closes in 48h (earlier if everyone votes):\n\n${optionLines}\n\nHotel costs are estimates, not bookings.\n\nVote here → ${appUrl}/trip/${tripId}`
     )
   }
 

@@ -92,7 +92,7 @@ export default function ItineraryPage({ params }: { params: Promise<{ tripId: st
         <div className="text-4xl mb-4">⏳</div>
         <h1 className="text-xl font-bold mb-2">Itinerary not ready yet</h1>
         <p className="text-sm" style={{ color: 'var(--muted)' }}>
-          The itinerary is being generated. Check back soon or wait for the WhatsApp message.
+          The itinerary is being generated. Check back soon or we'll email you when it's ready.
         </p>
       </div>
     )

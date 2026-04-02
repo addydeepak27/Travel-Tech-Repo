@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase'
-import { sendWhatsApp, formatPhone } from '@/lib/twilio'
+import { sendEmail } from '@/lib/email'
 import { AVATAR_META } from '@/types'
 import type { AvatarType } from '@/types'
-import { normalisePhone } from '@/lib/phone'
 
 function generateTravelCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -22,16 +21,15 @@ async function getUniqueTravelCode(db: ReturnType<typeof createServiceClient>): 
 export async function POST(req: NextRequest) {
   const {
     destinations,
-    organizerPhone,
     organizerName,
     organizerEmail,
-    memberPhones,
+    memberEmails,
     destinationMode,
     departureDate,
     returnDate,
   } = await req.json()
 
-  if (!destinations?.length || !organizerPhone) {
+  if (!destinations?.length || !organizerEmail) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
@@ -72,14 +70,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to create trip' }, { status: 500 })
   }
 
-  const orgPhone = formatPhone(organizerPhone)
   const { data: organizer } = await db
     .from('members')
     .insert({
       trip_id: trip.id,
-      phone: orgPhone,
+      phone: '',
       name: organizerName ?? 'Organiser',
-      email: organizerEmail ?? null,
+      email: organizerEmail,
       avatar: organizerAvatar,
       status: 'active',
       points: 0,
@@ -96,18 +93,16 @@ export async function POST(req: NextRequest) {
 
   await db.from('trips').update({ organizer_id: organizer.id }).eq('id', trip.id)
 
-  const rawPhones: string[] = memberPhones ?? []
-  const memberRows = rawPhones
-    .map(p => normalisePhone(p) ?? formatPhone(p))
-    .filter(Boolean)
-    .map(phone => ({
-      trip_id: trip.id,
-      phone,
-      status: 'invited',
-      points: 0,
-      brownie_points: 0,
-      opt_out: false,
-    }))
+  const rawEmails: string[] = (memberEmails ?? []).filter((e: string) => e.includes('@'))
+  const memberRows = rawEmails.map(email => ({
+    trip_id: trip.id,
+    phone: '',
+    email,
+    status: 'invited',
+    points: 0,
+    brownie_points: 0,
+    opt_out: false,
+  }))
 
   if (memberRows.length > 0) {
     await db.from('members').insert(memberRows)
@@ -115,7 +110,7 @@ export async function POST(req: NextRequest) {
 
   const { data: allMembers } = await db
     .from('members')
-    .select('id, phone, status')
+    .select('id, email, status')
     .eq('trip_id', trip.id)
 
   const allAvatars = Object.keys(AVATAR_META) as AvatarType[]
@@ -128,17 +123,20 @@ export async function POST(req: NextRequest) {
   const joinUrl = `${appUrl}/join/${trip.id}`
 
   for (const m of allMembers?.filter(m => m.status === 'invited') ?? []) {
+    if (!m.email) continue
     const personalLink = `${appUrl}/join/${trip.id}?m=${m.id}`
-    await sendWhatsApp(
-      m.phone,
-      `*${organizerName ?? 'The Planner'}* is organising *${tripName}* 🌊\n\nDon't be the one friend who finds out about this trip from their Instagram stories 😬\n\n🎭 Roles needed: ${neededRoles}\n_(each role owns part of the planning)_\n\nJoin → ${personalLink}\n\nReply YES to join or NO to decline.\n\n_Reply STOP anytime to opt out._`
+    await sendEmail(
+      m.email,
+      `${organizerName ?? 'Someone'} is planning ${tripName} — you're invited 🌊`,
+      `${organizerName ?? 'The Planner'} is organising ${tripName} 🌊\n\nDon't be the one friend who finds out about this trip from their Instagram stories 😬\n\nRoles needed: ${neededRoles}\n(each role owns part of the planning)\n\nJoin here → ${personalLink}\n\nOr enter code ${travelCode} at ${appUrl}\n\nReply to this email to decline.`
     )
   }
 
   const dashboardUrl = `${appUrl}/organizer/${trip.id}`
-  await sendWhatsApp(
-    orgPhone,
-    `✅ *${tripName}* is live!\n\nTravel code: *${travelCode}*\nShare this to invite anyone: ${joinUrl}\n\nMonitor your trip → ${dashboardUrl}`
+  await sendEmail(
+    organizerEmail,
+    `✅ ${tripName} is live! Travel code: ${travelCode}`,
+    `Your trip is live!\n\nTravel code: ${travelCode}\nShare this to invite anyone: ${joinUrl}\n\nMonitor your trip → ${dashboardUrl}`
   )
 
   return NextResponse.json({

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { sendWhatsApp } from '@/lib/twilio'
+import { sendEmail } from '@/lib/email'
 import { BUDGET_TIER_META } from '@/types'
 import type { BudgetTier } from '@/types'
 import { ACTIVE_MEMBER_STATUSES } from '@/lib/constants'
@@ -10,7 +10,7 @@ export async function checkAndComputeBudgetZone(
 ): Promise<void> {
   const { data: trip } = await db
     .from('trips')
-    .select('id, name, status, confirmed_destination, organizer_id, departure_date, members(id, budget_tier, status, opt_out, phone, avatar)')
+    .select('id, name, status, confirmed_destination, organizer_id, departure_date, members(id, budget_tier, status, opt_out, email, avatar)')
     .eq('id', tripId)
     .single()
 
@@ -46,9 +46,10 @@ export async function checkAndComputeBudgetZone(
   const spread = Math.max(...tierIndices) - Math.min(...tierIndices)
   if (spread >= 2) {
     const organiser = (trip.members ?? []).find((m: { id: string }) => m.id === trip.organizer_id)
-    if (organiser?.phone) {
-      await sendWhatsApp(organiser.phone,
-        `⚠️ *Budget heads-up (private):* Your group has a wide budget gap — some members are on a tight budget while others are comfortable spending more.\n\nThe itinerary will be built for the majority. Some members may find certain activities a stretch.\n\n_This message is only visible to you._`
+    if (organiser?.email) {
+      await sendEmail(organiser.email,
+        `Budget heads-up for ${trip.name} (private)`,
+        `Your group has a wide budget gap — some members are on a tight budget while others are comfortable spending more.\n\nThe itinerary will be built for the majority. Some members may find certain activities a stretch.\n\nThis message is only visible to you.`
       )
     }
   }
@@ -81,9 +82,10 @@ export async function checkAndComputeBudgetZone(
     }).eq('id', tripId)
 
     const organiser = (trip.members ?? []).find((m: { id: string }) => m.id === trip.organizer_id)
-    if (organiser?.phone) {
-      await sendWhatsApp(organiser.phone,
-        `All budgets in! Group zone: ₹${minBudget.toLocaleString('en-IN')}–₹${maxBudget.toLocaleString('en-IN')}/person.\n\n3 destination options are ready. The vote sends to the group in 2h.\n\nReply *sendnow* to send immediately, or *changeoptions* to adjust.\n\nView options → ${appUrl}/organizer/${tripId}`
+    if (organiser?.email) {
+      await sendEmail(organiser.email,
+        `All budgets in for ${trip.name} — destinations ready`,
+        `All budgets in! Group zone: ₹${minBudget.toLocaleString('en-IN')}–₹${maxBudget.toLocaleString('en-IN')}/person.\n\n3 destination options are ready. The vote sends to the group in 2h.\n\nView options → ${appUrl}/organizer/${tripId}`
       )
     }
   }

@@ -6,27 +6,31 @@
 - **Brand:** Toh Chale (renamed from TripSquad — fully replaced everywhere)
 - **Repo:** https://github.com/addydeepak27/Travel-Tech-Repo
 - **Local:** /Users/adityadeepak/tripsquad/
-- **Stack:** Next.js 16 + React 19 + TypeScript, Supabase (PostgreSQL), Claude Sonnet 4.6, Twilio WhatsApp, Vercel
+- **Stack:** Next.js 16 + React 19 + TypeScript, Supabase (PostgreSQL), Claude Sonnet 4.6, Resend (email), Vercel
 
 ## Critical rules
 - Client components MUST NOT query Supabase with the anon key — RLS blocks reads. Always use service-role API routes.
 - Data fetching uses `createServiceClient()` from `@/lib/supabase` (server-side only)
 - API routes for pages: `/api/trip/[tripId]/join-info`, `/api/trip/[tripId]/avatar-info`
 - `NEXT_PUBLIC_APP_URL=http://localhost:3000` in `.env.local`
-- WhatsApp messages rate-limited: max 2/user/day via `message_log` table
+- **Email is the ONLY communication channel** — WhatsApp/Twilio fully removed
+- All emails sent via `src/lib/email.ts` → Resend if `RESEND_API_KEY` set, mock console.log otherwise
+- `Member.email` is required (`string`), `Member.phone` is optional (`string | null`, stored as `''` for new members)
 - `destination_options` is JSONB storing `{ name, emoji }` objects (migrated from TEXT[])
 
 ## Key files
-- `src/app/page.tsx` — onboarding wizard (5 steps)
-- `src/app/join/[tripId]/page.tsx` — invite landing page
-- `src/app/avatar/[tripId]/[memberId]/page.tsx` — role picker
-- `src/app/api/trip/create/route.ts` — trip creation + Twilio invites
-- `src/app/api/webhook/twilio/route.ts` — inbound WhatsApp handler
+- `src/app/page.tsx` — onboarding wizard (5 steps); email-only, no phone field
+- `src/app/join/[tripId]/page.tsx` — invite landing page; self-join via email for generic links
+- `src/app/avatar/[tripId]/[memberId]/page.tsx` — role picker (2-tap UX, all 6 roles)
+- `src/app/api/trip/create/route.ts` — trip creation + Resend email invites
+- `src/app/api/trip/[tripId]/self-join/route.ts` — email-based self-identification for generic links
+- `src/lib/email.ts` — email sending (Resend or mock)
 - `src/lib/claude.ts` — AI: destinations / hotels / itinerary / tips
 - `src/types/index.ts` — all types + AVATAR_META + BUDGET_TIER_META
 
-## Next to build (ideas from planning)
-- FOMO mechanics: 22-step WhatsApp trigger framework (social proof, loss aversion, scarcity, identity)
+## Next to build
+- Add `RESEND_API_KEY` to `.env.local` for real email delivery (resend.com, free tier)
+- FOMO mechanics: email trigger sequence (social proof, loss aversion, scarcity, identity)
 - Dissent/fallback voting: re-vote when members disagree on itinerary days
 - Organizer abandonment escalation: auto-transfer after 5 days inactivity
 

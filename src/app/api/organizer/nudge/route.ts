@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase'
-import { sendWhatsApp } from '@/lib/twilio'
+import { sendEmail } from '@/lib/email'
 
 export async function POST(req: NextRequest) {
   const { tripId, memberId, organizerId, nudgeType } = await req.json()
@@ -10,7 +10,6 @@ export async function POST(req: NextRequest) {
 
   const db = createServiceClient()
 
-  // Verify organizer
   const { data: trip } = await db
     .from('trips')
     .select('name, organizer_id, status')
@@ -23,32 +22,37 @@ export async function POST(req: NextRequest) {
 
   const { data: member } = await db
     .from('members')
-    .select('phone, status, avatar, opt_out')
+    .select('email, status, avatar, opt_out')
     .eq('id', memberId)
     .single()
 
-  if (!member || member.opt_out) {
+  if (!member || member.opt_out || !member.email) {
     return NextResponse.json({ error: 'Member not found or opted out' }, { status: 404 })
   }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL
+  let subject = ''
   let message = ''
 
   switch (nudgeType ?? member.status) {
     case 'invited':
-      message = `Hey — *${trip.name}* is waiting on you. 1 tap to join:\n${appUrl}/join/${tripId}?m=${memberId}\n\n[I'm In 🙌] Reply YES  |  [Can't make it] Reply NO`
+      subject = `${trip.name} is waiting on you — 1 tap to join`
+      message = `${trip.name} is waiting on you.\n\nJoin here → ${appUrl}/join/${tripId}?m=${memberId}`
       break
     case 'consented':
-      message = `*${trip.name}*: You said yes but haven't picked your role yet — roles are filling fast.\nPick yours → ${appUrl}/avatar/${tripId}/${memberId}\n\n_(24h before auto-assign)_`
+      subject = `${trip.name}: Roles are filling fast — pick yours`
+      message = `${trip.name}: You said yes but haven't picked your role yet — roles are filling fast.\n\nPick yours → ${appUrl}/avatar/${tripId}/${memberId}\n\n(24h before auto-assign)`
       break
     case 'avatar_selected':
-      message = `*${trip.name}*: One quick thing before we can build the plan — what's your budget per person?\n\n[1] Backpacker <₹5k  [2] Comfortable ₹5–10k  [3] Premium ₹10–20k  [4] Luxury ₹20k+\n\nReply 1, 2, 3, or 4`
+      subject = `${trip.name}: Quick question before we can build the plan`
+      message = `${trip.name}: One quick thing before we can build the plan — what's your budget per person?\n\nSet your budget → ${appUrl}/preferences/${tripId}/${memberId}`
       break
     default:
-      message = `*${trip.name}* is waiting for your input. Tap to view → ${appUrl}/trip/${tripId}`
+      subject = `${trip.name} needs your input`
+      message = `${trip.name} is waiting for your input. Tap to view → ${appUrl}/trip/${tripId}`
   }
 
-  await sendWhatsApp(member.phone, message)
+  await sendEmail(member.email, subject, message)
 
   return NextResponse.json({ ok: true })
 }

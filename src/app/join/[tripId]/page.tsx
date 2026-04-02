@@ -21,6 +21,9 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
   const [loading, setLoading] = useState(true)
   const [responding, setResponding] = useState(false)
   const [alreadyResponded, setAlreadyResponded] = useState<'in' | 'out' | null>(null)
+  const [selfEmail, setSelfEmail] = useState('')
+  const [selfEmailLookingUp, setSelfEmailLookingUp] = useState(false)
+  const [selfEmailError, setSelfEmailError] = useState('')
 
   useEffect(() => {
     async function load(attempt = 0) {
@@ -66,6 +69,25 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
     }
     load(0)
   }, [tripId, memberId, retryCount])
+
+  async function handleSelfJoin() {
+    if (!selfEmail.includes('@') || selfEmailLookingUp) return
+    setSelfEmailLookingUp(true)
+    setSelfEmailError('')
+    const res = await fetch(`/api/trip/${tripId}/self-join`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: selfEmail }),
+    })
+    if (!res.ok) {
+      setSelfEmailError('Something went wrong — try again.')
+      setSelfEmailLookingUp(false)
+      return
+    }
+    const { memberId: mid } = await res.json()
+    // Redirect to personalised link — this re-renders the page with ?m= param
+    window.location.href = `/join/${tripId}?m=${mid}`
+  }
 
   async function handleConsent(choice: 'in' | 'out') {
     if (responding || !memberId) return
@@ -228,7 +250,7 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
             {[
               { icon: '🎭', step: 'Pick your role', detail: 'Each role owns a slice of the planning — 2 taps, no forms.' },
               { icon: '💰', step: 'Share your budget', detail: 'Anonymous. Group budget zone revealed when everyone submits.' },
-              { icon: '🗺', step: 'Vote on destination', detail: 'Majority wins. WhatsApp quick-reply, 1 tap.' },
+              { icon: '🗺', step: 'Vote on destination', detail: 'Majority wins. 1 tap in your browser.' },
             ].map(({ icon, step, detail }) => (
               <div key={step} className="flex items-start gap-3">
                 <span className="text-lg flex-shrink-0">{icon}</span>
@@ -242,13 +264,29 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
         </div>
 
         {!memberId && (
-          <div
-            className="p-4 rounded-2xl text-center"
-            style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}
-          >
-            <p className="text-sm" style={{ color: '#d97706' }}>
-              This link isn&apos;t personalised. Reply <strong>YES</strong> on WhatsApp to join, or ask the organiser to share your personal invite link.
+          <div className="rounded-2xl p-4" style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}>
+            <p className="text-sm font-semibold mb-1">Enter your email to join</p>
+            <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
+              We&apos;ll match you to your invite or create a spot for you.
             </p>
+            <input
+              type="email"
+              placeholder="you@example.com"
+              value={selfEmail}
+              onChange={e => setSelfEmail(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSelfJoin()}
+              className="w-full px-4 py-3 rounded-xl text-sm outline-none mb-2"
+              style={{ background: 'var(--background)', border: selfEmail && !selfEmail.includes('@') ? '1px solid #ef4444' : '1px solid var(--card-border)' }}
+            />
+            {selfEmailError && <p className="text-xs mb-2" style={{ color: '#ef4444' }}>{selfEmailError}</p>}
+            <button
+              onClick={handleSelfJoin}
+              disabled={!selfEmail.includes('@') || selfEmailLookingUp}
+              className="w-full py-3 rounded-xl font-bold text-sm disabled:opacity-40"
+              style={{ background: 'var(--accent)', color: '#fff' }}
+            >
+              {selfEmailLookingUp ? '⏳ Looking you up...' : 'Join this trip →'}
+            </button>
           </div>
         )}
       </div>
@@ -276,7 +314,7 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
             Can&apos;t Make It
           </button>
           <p className="text-center text-xs pb-1" style={{ color: 'var(--muted)' }}>
-            Reply STOP on WhatsApp anytime to stop receiving trip messages.
+            Unsubscribe from trip emails anytime.
           </p>
         </div>
       )}

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { sendWhatsApp } from '@/lib/twilio'
+import { sendEmail } from '@/lib/email'
 import { ACTIVE_MEMBER_STATUSES } from '@/lib/constants'
 
 export async function awardBrowniePoints(
@@ -7,7 +7,7 @@ export async function awardBrowniePoints(
   tripId: string,
   memberId: string,
   eventType: string,
-  phone: string,
+  email: string,
   eventLabel: string
 ): Promise<void> {
   const { count: totalActive } = await db
@@ -41,5 +41,7 @@ export async function awardBrowniePoints(
   const { data: member } = await db
     .from('members').select('brownie_points').eq('id', memberId).single()
 
-  await sendWhatsApp(phone, `${headline}\nYour total: ${member?.brownie_points ?? points} pts 🏆`)
+  if (email) {
+    await sendEmail(email, `+${points} brownie points — ${eventLabel}`, `${headline}\nYour total: ${member?.brownie_points ?? points} pts 🏆`)
+  }
 }

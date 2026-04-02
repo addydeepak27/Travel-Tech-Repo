@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Toh Chale — Group trips, without the chaos",
-  description: "From 'let's go somewhere' to a voted, locked plan — without the 200-message WhatsApp thread.",
+  description: "From 'let's go somewhere' to a voted, locked plan — planning that's as fun as the trip itself.",
   manifest: "/manifest.json",
 };
 

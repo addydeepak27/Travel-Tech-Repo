@@ -3,23 +3,15 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { INDIAN_DESTINATIONS, TRENDING_DESTINATIONS } from '@/types'
-import { normalisePhone } from '@/lib/phone'
 
 type Step = 'identity' | 'intent' | 'destination' | 'join_code' | 'share'
 type DestMode = 'group_vote' | 'organizer_pick'
-
-interface ContactsNavigator extends Navigator {
-  contacts: {
-    select: (props: string[], opts?: { multiple?: boolean }) => Promise<{ tel?: string[]; name?: string[] }[]>
-  }
-}
 
 export default function HomePage() {
   const router = useRouter()
 
   const [step, setStep] = useState<Step>('identity')
 
-  const [phone, setPhone] = useState('')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
 
@@ -27,7 +19,7 @@ export default function HomePage() {
   const [selectedDests, setSelectedDests] = useState<string[]>([])
   const [destSearch, setDestSearch] = useState('')
   const [destDropdownOpen, setDestDropdownOpen] = useState(false)
-  const [memberPhones, setMemberPhones] = useState('')
+  const [memberEmails, setMemberEmails] = useState('')
   const [departureDate, setDepartureDate] = useState('')
   const [returnDate, setReturnDate] = useState('')
   const destSearchRef = useRef<HTMLInputElement>(null)
@@ -45,7 +37,7 @@ export default function HomePage() {
   const [copied, setCopied] = useState(false)
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-  const canProceedIdentity = phone.replace(/\D/g, '').length >= 10 && name.trim().length >= 1 && emailValid
+  const canProceedIdentity = name.trim().length >= 1 && emailValid
   const canProceedDestination = destMode === 'group_vote'
     ? selectedDests.length >= 2
     : selectedDests.length >= 1
@@ -66,18 +58,6 @@ export default function HomePage() {
     })
   }
 
-  async function pickContacts() {
-    if (!('contacts' in navigator)) return
-    try {
-      const contacts = await (navigator as ContactsNavigator).contacts.select(['tel'], { multiple: true })
-      const numbers = contacts.flatMap(c => c.tel ?? [])
-        .map(n => normalisePhone(n) ?? n)
-        .filter(Boolean)
-        .join('\n')
-      setMemberPhones(prev => prev ? `${prev}\n${numbers}` : numbers)
-    } catch { /* user dismissed */ }
-  }
-
   async function createTrip() {
     if (!canProceedDestination || creating) return
     setCreating(true)
@@ -89,17 +69,16 @@ export default function HomePage() {
       return found ? { name: found.name, emoji: (found as { emoji?: string }).emoji ?? '📍' } : { name }
     })
 
-    const rawPhones = memberPhones.split(/[\n,]+/).map(p => p.trim()).filter(Boolean)
+    const rawEmails = memberEmails.split(/[\n,]+/).map(e => e.trim()).filter(e => e.includes('@'))
 
     const res = await fetch('/api/trip/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         destinations: destObjects,
-        organizerPhone: phone,
         organizerName: name,
         organizerEmail: email,
-        memberPhones: rawPhones,
+        memberEmails: rawEmails,
         destinationMode: destMode,
         departureDate: departureDate || null,
         returnDate: returnDate || null,
@@ -150,17 +129,6 @@ export default function HomePage() {
     router.push(`/join/${foundId}`)
   }
 
-  function shareOnWhatsApp() {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin
-    const joinUrl = `${appUrl}/join/${tripId}`
-    const text = encodeURIComponent(
-      destMode === 'group_vote'
-        ? `*${name}* is cooking up *${tripName}* on Toh Chale 🌊\n\nDon't be the one friend who finds out about this trip from their Instagram stories 😬\n\nJoin to vote on the final destination 🗳️\n\nJoin here → ${joinUrl}\n\nOr enter code *${tripCode}* at ${appUrl}\n\n_(Takes 2 mins — pick your role and vote anonymously)_`
-        : `*${name}* is planning *${tripName}* on Toh Chale 🌊\n\nDon't be the one friend who finds out about this trip from their Instagram stories 😬\n\nJoin here → ${joinUrl}\n\nOr enter code *${tripCode}* at ${appUrl}\n\n_(Takes 2 mins — pick your role and budget anonymously)_`
-    )
-    window.open(`https://wa.me/?text=${text}`, '_blank')
-  }
-
   function copyLink() {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin
     navigator.clipboard.writeText(`${appUrl}/join/${tripId}`)
@@ -170,63 +138,90 @@ export default function HomePage() {
 
   if (step === 'identity') {
     return (
-      <div className="min-h-dvh flex flex-col px-5 safe-top safe-bottom" style={{ background: 'var(--background)' }}>
-        <div className="pt-12 pb-8 text-center">
-          <div className="text-4xl mb-3">🌊</div>
-          <h1 className="text-2xl font-bold">Toh Chale</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>Group travel, finally stress-free</p>
+      <div className="min-h-dvh flex flex-col px-5 safe-top" style={{ background: 'var(--background)' }}>
+        <div className="flex-1 overflow-y-auto">
+          {/* Hero */}
+          <div className="pt-10 pb-6 text-center">
+            {/* Gradient glow blob behind emoji */}
+            <div className="relative inline-block mb-4">
+              <div className="absolute inset-0 blur-2xl opacity-40 rounded-full" style={{ background: 'radial-gradient(circle, #6366f1 0%, #06b6d4 100%)', transform: 'scale(1.8)' }} />
+              <div className="relative text-5xl">🌊</div>
+            </div>
+
+            <h1 className="text-3xl font-black tracking-tight" style={{ background: 'linear-gradient(135deg, #fff 30%, #94a3b8 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              Toh Chale
+            </h1>
+
+            <p className="text-lg font-bold mt-2">
+              Planning should be half the fun.
+            </p>
+
+            {/* Social proof pill */}
+            <div className="inline-flex items-center gap-2 mt-4 px-4 py-1.5 rounded-full text-xs font-semibold" style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', color: '#a5b4fc' }}>
+              <span>✉️</span> Email-native · No app needed
+            </div>
+
+            {/* Value props */}
+            <div className="grid grid-cols-3 gap-3 mt-6 text-center">
+              {[
+                { icon: '🗺️', label: 'Vote on where to go' },
+                { icon: '🎭', label: 'Own your squad role' },
+                { icon: '📅', label: 'AI builds the plan' },
+              ].map(({ icon, label }) => (
+                <div key={label} className="rounded-2xl p-3" style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}>
+                  <div className="text-2xl mb-1">{icon}</div>
+                  <p className="text-xs leading-tight" style={{ color: 'var(--muted)' }}>{label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Form */}
+          <div className="space-y-3 pb-4">
+            <div>
+              <label className="block text-xs font-semibold mb-1.5 tracking-wide" style={{ color: 'var(--muted)' }}>YOUR NAME</label>
+              <input
+                type="text"
+                placeholder="Aditya"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                className="w-full px-4 py-3.5 rounded-2xl text-sm outline-none transition-all"
+                style={{ background: 'var(--card)', border: name ? '1px solid #6366f1' : '1px solid var(--card-border)' }}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1.5 tracking-wide" style={{ color: 'var(--muted)' }}>EMAIL</label>
+              <input
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                className="w-full px-4 py-3.5 rounded-2xl text-sm outline-none transition-all"
+                style={{ background: 'var(--card)', border: email && !emailValid ? '1px solid #ef4444' : email ? '1px solid #6366f1' : '1px solid var(--card-border)' }}
+              />
+              {email && !emailValid && (
+                <p className="text-xs mt-1" style={{ color: '#ef4444' }}>Enter a valid email address</p>
+              )}
+              <p className="text-xs mt-1.5" style={{ color: 'var(--muted)' }}>All trip updates and invites will be sent here</p>
+            </div>
+          </div>
         </div>
 
-        <div className="flex-1 space-y-4">
-          <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted)' }}>YOUR NAME</label>
-            <input
-              type="text"
-              placeholder="Aditya"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              className="w-full px-4 py-3.5 rounded-2xl text-sm outline-none"
-              style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted)' }}>WHATSAPP NUMBER</label>
-            <input
-              type="tel"
-              placeholder="+91 98765 43210"
-              value={phone}
-              onChange={e => setPhone(e.target.value)}
-              className="w-full px-4 py-3.5 rounded-2xl text-sm outline-none"
-              style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted)' }}>EMAIL</label>
-            <input
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              className="w-full px-4 py-3.5 rounded-2xl text-sm outline-none"
-              style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
-            />
-            {email && !emailValid && (
-              <p className="text-xs mt-1" style={{ color: '#ef4444' }}>Enter a valid email address</p>
-            )}
-          </div>
-        </div>
-
-        <div className="pt-4 pb-2">
+        <div className="pt-3 pb-6 safe-bottom">
           <button
             onClick={() => setStep('intent')}
             disabled={!canProceedIdentity}
-            className="w-full py-4 rounded-2xl font-bold text-base disabled:opacity-40 transition-opacity"
-            style={{ background: 'var(--accent)', color: '#fff' }}
+            className="w-full py-4 rounded-2xl font-black text-base disabled:opacity-30 transition-all"
+            style={{
+              background: canProceedIdentity ? 'linear-gradient(135deg, #6366f1, #06b6d4)' : 'var(--card)',
+              color: '#fff',
+              boxShadow: canProceedIdentity ? '0 0 24px rgba(99,102,241,0.4)' : 'none',
+            }}
           >
-            Continue →
+            Let&apos;s go →
           </button>
           <p className="text-center text-xs mt-3" style={{ color: 'var(--muted)' }}>
-            By continuing you agree to receive trip updates on WhatsApp. Reply STOP anytime.
+            By continuing you agree to receive trip updates via email. Unsubscribe anytime.
           </p>
         </div>
       </div>
@@ -543,13 +538,13 @@ export default function HomePage() {
             )}
           </div>
 
-          {/* Squad phones */}
+          {/* Squad emails */}
           <div>
             <p className="text-xs font-semibold mb-2.5" style={{ color: 'var(--muted)' }}>INVITE SQUAD</p>
             <textarea
-              value={memberPhones}
-              onChange={e => setMemberPhones(e.target.value)}
-              placeholder={'+91 98765 43210\n+91 87654 32109\n+91 76543 21098'}
+              value={memberEmails}
+              onChange={e => setMemberEmails(e.target.value)}
+              placeholder={'rahul@gmail.com\npriya@gmail.com\nkaran@gmail.com'}
               rows={4}
               className="w-full px-4 py-3.5 rounded-2xl text-sm outline-none resize-none"
               style={{
@@ -559,16 +554,7 @@ export default function HomePage() {
                 lineHeight: 1.7,
               }}
             />
-            <p className="text-xs mt-1.5" style={{ color: 'var(--muted)' }}>One WhatsApp number per line</p>
-            {'contacts' in navigator && (
-              <button
-                onClick={pickContacts}
-                className="mt-2.5 text-sm font-semibold flex items-center gap-1.5"
-                style={{ color: 'var(--accent)' }}
-              >
-                📱 Add from contacts
-              </button>
-            )}
+            <p className="text-xs mt-1.5" style={{ color: 'var(--muted)' }}>One email per line — they'll get an invite with a direct link</p>
           </div>
         </div>
 
@@ -607,8 +593,8 @@ export default function HomePage() {
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>
             {destMode === 'group_vote'
-              ? 'Invites sent via WhatsApp. Once everyone joins, the squad votes on the final destination.'
-              : 'Invites sent via WhatsApp. Share the code below to add more people.'}
+              ? 'Invites sent via email. Once everyone joins, the squad votes on the final destination.'
+              : 'Invites sent via email. Share the code below to add more people.'}
           </p>
         </div>
 
@@ -623,18 +609,31 @@ export default function HomePage() {
 
         <div className="space-y-3">
           <button
-            onClick={shareOnWhatsApp}
+            onClick={() => {
+              const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin
+              const joinUrl = `${appUrl}/join/${tripId}`
+              const text = destMode === 'group_vote'
+                ? `${name} is cooking up ${tripName} on Toh Chale 🌊\n\nDon't be the one friend who finds out about this trip from their Instagram stories 😬\n\nJoin to vote on the final destination 🗳️\n\n${joinUrl}`
+                : `${name} is planning ${tripName} on Toh Chale 🌊\n\nDon't be the one friend who finds out about this trip from their Instagram stories 😬\n\n${joinUrl}`
+              if (navigator.share) {
+                navigator.share({ title: tripName, text, url: joinUrl }).catch(() => {})
+              } else {
+                navigator.clipboard.writeText(`${text}`)
+                setCopied(true)
+                setTimeout(() => setCopied(false), 2000)
+              }
+            }}
             className="w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-2"
-            style={{ background: '#25D366', color: '#fff' }}
+            style={{ background: 'linear-gradient(135deg, #6366f1, #06b6d4)', color: '#fff', boxShadow: '0 0 20px rgba(99,102,241,0.35)' }}
           >
-            <span>📲</span> Share on WhatsApp
+            <span>✉️</span> Share invite link
           </button>
           <button
             onClick={copyLink}
             className="w-full py-3.5 rounded-2xl font-semibold text-sm"
             style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
           >
-            {copied ? '✅ Copied!' : '🔗 Copy invite link'}
+            {copied ? '✅ Copied!' : '🔗 Copy link'}
           </button>
         </div>
 
