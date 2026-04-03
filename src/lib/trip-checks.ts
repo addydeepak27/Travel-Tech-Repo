@@ -3,6 +3,7 @@ import { sendEmail } from '@/lib/email'
 import { BUDGET_TIER_META } from '@/types'
 import type { BudgetTier } from '@/types'
 import { ACTIVE_MEMBER_STATUSES } from '@/lib/constants'
+import { shouldLockDecision } from '@/lib/decisions'
 
 export async function checkAndComputeBudgetZone(
   db: SupabaseClient,
@@ -10,7 +11,7 @@ export async function checkAndComputeBudgetZone(
 ): Promise<void> {
   const { data: trip } = await db
     .from('trips')
-    .select('id, name, status, confirmed_destination, organizer_id, departure_date, members(id, budget_tier, status, opt_out, email, avatar)')
+    .select('id, name, status, confirmed_destination, organizer_id, departure_date, questionnaire_deadline_at, members(id, budget_tier, status, opt_out, email, avatar)')
     .eq('id', tripId)
     .single()
 
@@ -21,15 +22,12 @@ export async function checkAndComputeBudgetZone(
     ACTIVE_MEMBER_STATUSES.includes(m.status as never)
   )
   const withBudget = activeMembers.filter((m: { budget_tier: string | null }) => m.budget_tier)
-  const totalActive = activeMembers.length
 
-  const revealThreshold = Math.max(5, Math.ceil(totalActive * 0.8))
-  if (withBudget.length < revealThreshold && withBudget.length < totalActive) return
-
+  // Always update group_budget_zone as a live preview so the UI shows real data
   const tierOrder: BudgetTier[] = ['backpacker', 'comfortable', 'premium', 'luxury']
   const tiers = withBudget.map((m: { budget_tier: string }) => m.budget_tier as BudgetTier)
   const sorted = [...tiers].sort((a, b) => tierOrder.indexOf(a) - tierOrder.indexOf(b))
-  const medianTier = sorted[Math.floor(sorted.length / 2)]
+  const medianTier: BudgetTier | undefined = sorted[Math.floor(sorted.length / 2)]
 
   const tierBudgetMap: Record<BudgetTier, { min: number; max: number }> = {
     backpacker:  { min: 0,       max: 50000   },
@@ -37,6 +35,20 @@ export async function checkAndComputeBudgetZone(
     premium:     { min: 100000,  max: 500000  },
     luxury:      { min: 500000,  max: 1000000 },
   }
+
+  if (medianTier) {
+    const { min: minBudget, max: maxBudget } = tierBudgetMap[medianTier]
+    await db.from('trips').update({
+      group_budget_zone: { min: minBudget, max: maxBudget },
+      weighted_median_tier: medianTier,
+    }).eq('id', tripId)
+  }
+
+  // Lock when >= 70% have submitted OR hard deadline has passed
+  const deadline = trip.questionnaire_deadline_at ? new Date(trip.questionnaire_deadline_at) : null
+  if (!shouldLockDecision(withBudget.length, activeMembers.length, deadline)) return
+  if (!medianTier) return
+
   const { min: minBudget, max: maxBudget } = tierBudgetMap[medianTier]
 
   await db.from('trips').update({
@@ -92,6 +104,40 @@ export async function checkAndComputeBudgetZone(
       )
     }
   }
+}
+
+/**
+ * Auto-generate itinerary when destination + budget + dates + hotel are all locked.
+ * Safe to call multiple times — no-ops if itinerary already exists or conditions not met.
+ */
+export async function checkAndTriggerItinerary(
+  db: SupabaseClient,
+  tripId: string
+): Promise<void> {
+  const { data: trip } = await db
+    .from('trips')
+    .select('id, status, confirmed_destination, confirmed_hotel, weighted_median_tier, departure_date, itinerary')
+    .eq('id', tripId)
+    .single()
+
+  if (!trip) return
+  // All three conditions must be locked
+  if (!trip.confirmed_destination) return
+  if (!trip.weighted_median_tier) return
+  if (!trip.departure_date) return
+  // Hotel is used in the prompt — require it too
+  if (!trip.confirmed_hotel) return
+  // Skip if itinerary already generated or trip fully locked
+  if (trip.itinerary || trip.status === 'locked') return
+  // Skip if already in vote or later phase (itinerary already in flight)
+  if (['itinerary_vote', 'locked'].includes(trip.status)) return
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL
+  await fetch(`${appUrl}/api/claude/itinerary`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tripId }),
+  })
 }
 
 export function deriveSpendVote(tier: BudgetTier): 'low' | 'mid' | 'high' {

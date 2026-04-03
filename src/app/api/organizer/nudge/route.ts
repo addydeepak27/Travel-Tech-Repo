@@ -54,5 +54,8 @@ export async function POST(req: NextRequest) {
 
   await sendEmail(member.email, subject, message)
 
+  // Record that the organizer took an action (resets inactivity clock)
+  await db.from('members').update({ last_active_at: new Date().toISOString() }).eq('id', organizerId)
+
   return NextResponse.json({ ok: true })
 }

@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase'
 import { sendEmail } from '@/lib/email'
 import { ACTIVE_MEMBER_STATUSES, AVATAR_ASSUMED_BUDGET, getVoteWindowHours } from '@/lib/constants'
+import { shouldLockDecision } from '@/lib/decisions'
 import { AVATAR_META, BUDGET_TIER_META } from '@/types'
 import type { AvatarType, BudgetTier } from '@/types'
-import { deriveSpendVote } from '@/lib/trip-checks'
+import { deriveSpendVote, checkAndTriggerItinerary } from '@/lib/trip-checks'
 
 export async function GET(req: NextRequest) {
   const secret = req.headers.get('authorization')?.replace('Bearer ', '')
@@ -51,8 +52,10 @@ export async function GET(req: NextRequest) {
         .eq('opt_out', false)
 
       const nonVoters = (activeMembers ?? []).filter((m: { id: string }) => !votedIds.has(m.id))
+      const voteDeadline = new Date(new Date(trip.status_updated_at ?? now).getTime() + voteWindowHours * 3_600_000)
 
-      if (hoursOpen >= voteWindowHours) {
+      // Lock early at 70% completion OR when the full vote window expires
+      if (shouldLockDecision(votedIds.size, (activeMembers ?? []).length, voteDeadline)) {
         const tally: Record<string, number> = {}
         for (const v of voted ?? []) {
           const val = (v as { value?: string }).value ?? 'unknown'
@@ -93,6 +96,12 @@ export async function GET(req: NextRequest) {
             status: voteType === 'destination' ? 'hotel_vote' : voteType === 'hotel' ? 'itinerary_preferences' : 'locked',
             status_updated_at: new Date().toISOString(),
           }).eq('id', trip.id)
+
+          // Phase 7: auto-trigger itinerary generation when hotel locks
+          // (destination + budget + dates already set at this point)
+          if (voteType === 'hotel') {
+            await checkAndTriggerItinerary(db, trip.id)
+          }
 
           for (const m of nonVoters) {
             if (!m.email) continue
@@ -242,6 +251,33 @@ export async function GET(req: NextRequest) {
       `We've assumed ${tierMeta.label} budget (${tierMeta.range}) for you based on your role.\n\nWant to change it? Update your budget here → ${appUrl}/preferences/${member.trip_id}/${member.id}`)
   }
 
+  // ── 4b. Auto-advance destination_vote_pending → destination_vote ──────────
+  // Fires when destination_vote_scheduled_at has passed
+  const { data: pendingVoteTrips } = await db.from('trips')
+    .select('id, name, organizer_id, destination_vote_scheduled_at, members(id, email, opt_out, status)')
+    .eq('status', 'destination_vote_pending')
+    .lt('destination_vote_scheduled_at', new Date(now).toISOString())
+
+  for (const trip of pendingVoteTrips ?? []) {
+    await db.from('trips').update({
+      status: 'destination_vote',
+      status_updated_at: new Date(now).toISOString(),
+    }).eq('id', trip.id)
+
+    // Notify all active members that voting is open
+    const active = (trip.members ?? []).filter((m: { status: string; opt_out: boolean }) =>
+      ACTIVE_MEMBER_STATUSES.includes(m.status as never) && !m.opt_out
+    )
+    for (const m of active) {
+      if (!m.email) continue
+      await sendEmail(
+        m.email,
+        `🗳 Vote is open for ${trip.name} — pick your destination`,
+        `The destination vote for ${trip.name} is now open. Your vote counts — be first and earn more brownie points!\n\nVote now → ${appUrl}/trip/${trip.id}`
+      )
+    }
+  }
+
   // ── 5. Zero-member trip auto-cancel ───────────────────────────────────────
   const { data: staleTrips } = await db.from('trips')
     .select('id, name, organizer_id, status_updated_at, members(id, email, status)')
@@ -303,6 +339,208 @@ export async function GET(req: NextRequest) {
         vote_type: `countdown_${daysOut}`, stage: 1,
       })
     }
+  }
+
+  // ── 7. Organizer abandonment escalation ───────────────────────────────────
+  const { data: activeTrips } = await db.from('trips')
+    .select('id, name, organizer_id, created_at, status')
+    .not('status', 'in', '("locked","cancelled","draft")')
+    .not('organizer_id', 'is', null)
+
+  for (const trip of activeTrips ?? []) {
+    const { data: organizer } = await db.from('members')
+      .select('id, email, name, last_active_at, brownie_points')
+      .eq('id', trip.organizer_id)
+      .single()
+    if (!organizer?.email) continue
+
+    // Fall back to trip creation time if organizer has never had activity tracked
+    const lastActive = organizer.last_active_at ?? trip.created_at
+    const hoursInactive = (now - new Date(lastActive).getTime()) / 3600000
+
+    // Stage 1: 3 days (72h) — reminder
+    // Stage 2: 4 days (96h) — 48h warning
+    // Stage 3: 5 days (120h) — transfer ownership
+    let stage: 1 | 2 | 3 | null = null
+    if (hoursInactive >= 120) stage = 3
+    else if (hoursInactive >= 96) stage = 2
+    else if (hoursInactive >= 72) stage = 1
+
+    if (!stage) continue
+
+    const { data: existingNudge } = await db.from('nudges').select('id')
+      .eq('trip_id', trip.id).eq('member_id', organizer.id)
+      .eq('vote_type', 'organizer_inactivity').eq('stage', stage).single()
+    if (existingNudge) continue
+
+    if (stage === 3) {
+      // Find most-engaged active member to take over (highest brownie_points, exclude current organizer)
+      const { data: candidates } = await db.from('members')
+        .select('id, email, name, brownie_points')
+        .eq('trip_id', trip.id)
+        .eq('status', 'active')
+        .eq('opt_out', false)
+        .neq('id', organizer.id)
+        .order('brownie_points', { ascending: false })
+        .limit(1)
+
+      const newOrganizer = candidates?.[0]
+      if (!newOrganizer?.email) {
+        // No eligible member to transfer to — skip transfer, still log nudge to avoid spam
+        await db.from('nudges').insert({
+          trip_id: trip.id, member_id: organizer.id,
+          vote_type: 'organizer_inactivity', stage: 3,
+        })
+        continue
+      }
+
+      // Transfer ownership
+      await db.from('trips').update({ organizer_id: newOrganizer.id }).eq('id', trip.id)
+      await db.from('members').update({ last_active_at: new Date().toISOString() }).eq('id', newOrganizer.id)
+
+      // Notify old organizer
+      await sendEmail(
+        organizer.email,
+        `${newOrganizer.name} just took the wheel on ${trip.name}`,
+        `Hey ${organizer.name ?? 'there'}, since ${trip.name} was on pause, we transferred the organizer role to ${newOrganizer.name} — your most active squad member.\n\nIf you're back, reach out to your squad directly or start fresh at ${appUrl} 🌊`
+      )
+
+      // Notify new organizer
+      await sendEmail(
+        newOrganizer.email,
+        `You're now the organizer of ${trip.name} 🎉`,
+        `Hey ${newOrganizer.name ?? 'there'}! Your squad needed someone to step up, and you're it.\n\nYou've been made the trip organizer for "${trip.name}". Your squad is counting on you.\n\nTake the wheel → ${appUrl}/organizer/${trip.id}`
+      )
+
+      await db.from('nudges').insert({
+        trip_id: trip.id, member_id: organizer.id,
+        vote_type: 'organizer_inactivity', stage: 3,
+      })
+    } else if (stage === 2) {
+      await sendEmail(
+        organizer.email,
+        `48h heads up — ${trip.name} needs a captain`,
+        `Hey ${organizer.name ?? 'there'}, just a heads up — if the trip doesn't get some love in the next 2 days, we'll hand the organizer role to your most engaged squad member so the trip can keep moving.\n\nStill in? Pick up where you left off → ${appUrl}/organizer/${trip.id}`
+      )
+      await db.from('nudges').insert({
+        trip_id: trip.id, member_id: organizer.id,
+        vote_type: 'organizer_inactivity', stage: 2,
+      })
+    } else {
+      await sendEmail(
+        organizer.email,
+        `Your squad is waiting, ${organizer.name ?? 'there'} 👀`,
+        `Hey ${organizer.name ?? 'there'}, your trip "${trip.name}" has been sitting for a few days.\n\nYour squad joined but can't move forward without you.\n\nJump back in → ${appUrl}/organizer/${trip.id}`
+      )
+      await db.from('nudges').insert({
+        trip_id: trip.id, member_id: organizer.id,
+        vote_type: 'organizer_inactivity', stage: 1,
+      })
+    }
+  }
+
+  // ── 8. FOMO emails — questionnaire deadline urgency ───────────────────────
+  // Stage 1: pre-deadline warmup  (threshold varies by nudge_frequency_type)
+  // Stage 2: peak FOMO            ("it's just you")
+  // Stage 3: deadline passed      → last chance to update
+  //
+  // Thresholds (minutes before deadline to fire each stage):
+  //   gentle:     stage1=120, stage2=60
+  //   normal:     stage1=90,  stage2=60
+  //   aggressive: stage1=60,  stage2=30
+  //   custom:     stage1=nudge_frequency_value*2, stage2=nudge_frequency_value
+  const FOMO_THRESHOLDS: Record<string, [number, number]> = {
+    gentle:     [120, 60],
+    normal:     [90,  60],
+    aggressive: [60,  30],
+  }
+
+  const { data: fomoMembers } = await db.from('members')
+    .select('id, email, name, trip_id, fomo_stage, trips(id, name, questionnaire_deadline_at, status, organizer_id, nudge_frequency_type, nudge_frequency_value)')
+    .is('budget_tier', null)
+    .eq('opt_out', false)
+    .not('status', 'in', '("declined","dropped","active")')
+
+  for (const member of fomoMembers ?? []) {
+    if (!member.email) continue
+    const trip = (member as unknown as {
+      trips?: {
+        id: string; name: string; questionnaire_deadline_at: string | null
+        status: string; organizer_id: string | null
+        nudge_frequency_type: string; nudge_frequency_value: number | null
+      }
+    }).trips
+    if (!trip?.questionnaire_deadline_at) continue
+    if (['locked', 'cancelled', 'draft'].includes(trip.status)) continue
+
+    const freqType = trip.nudge_frequency_type ?? 'normal'
+    const freqVal = trip.nudge_frequency_value
+    const [s1MinsBefore, s2MinsBefore] = freqType === 'custom' && freqVal
+      ? [freqVal * 2, freqVal]
+      : (FOMO_THRESHOLDS[freqType] ?? FOMO_THRESHOLDS.normal)
+
+    const deadlineMs = new Date(trip.questionnaire_deadline_at).getTime()
+    const msToDeadline = deadlineMs - now
+    const deadlinePassed = msToDeadline <= 0
+
+    let targetStage: 1 | 2 | 3 | null = null
+    if (deadlinePassed) targetStage = 3
+    else if (msToDeadline <= s2MinsBefore * 60000) targetStage = 2
+    else if (msToDeadline <= s1MinsBefore * 60000) targetStage = 1
+
+    if (!targetStage) continue
+    const currentStage = (member as unknown as { fomo_stage?: number }).fomo_stage ?? 0
+    if (currentStage >= targetStage && !targetStage) continue
+
+    // Fetch organizer name + live submitted count in parallel
+    const [organizerRes, countRes, totalCountRes] = await Promise.all([
+      trip.organizer_id
+        ? db.from('members').select('name').eq('id', trip.organizer_id).single()
+        : Promise.resolve({ data: null }),
+      db.from('members')
+        .select('id', { count: 'exact', head: true })
+        .eq('trip_id', member.trip_id)
+        .not('budget_tier', 'is', null),
+      db.from('members')
+        .select('id', { count: 'exact', head: true })
+        .eq('trip_id', member.trip_id)
+        .not('status', 'in', '("declined","dropped")'),
+    ])
+
+    const submitted = countRes.count ?? 0
+    const totalActive = totalCountRes.count ?? 0
+    const remaining = totalActive - submitted   // members (incl. this one) who haven't submitted
+
+    // Override conditions — bypass frequency schedule, always send stage 2 immediately
+    const isLastUser = remaining === 1           // this member is the only one left
+    const majorityReached = submitted > totalActive / 2  // >50% already in
+    const deadlineNear = !deadlinePassed && msToDeadline <= 30 * 60000  // ≤30 min left
+
+    const override = (isLastUser || majorityReached || deadlineNear) && currentStage < 2
+    const effectiveStage: 1 | 2 | 3 = override ? 2 : (targetStage ?? 1)
+
+    if (currentStage >= effectiveStage) continue
+
+    const organizerName = (organizerRes.data as { name?: string | null } | null)?.name ?? 'the organizer'
+    const userName = member.name ?? 'there'
+    const link = `${appUrl}/preferences/${member.trip_id}/${member.id}`
+
+    const subjects: Record<1 | 2 | 3, string> = {
+      1: `${submitted} people already in for ${trip.name} — don't be last`,
+      2: `💀 It's just you — everyone's waiting for ${trip.name}`,
+      3: `🚨 Budget locked for ${trip.name} — update it before the plan is finalised`,
+    }
+    const msgs: Record<1 | 2 | 3, string> = {
+      1: `Hey ${userName},\n\n${submitted} of your squad have already locked their budget for ${trip.name}.\n\n${organizerName} is refreshing waiting for the last few.\n\nTakes 30 seconds → ${link}`,
+      2: `Hey ${userName},\n\n💀 It's just you\nEveryone's waiting 😭\n${organizerName} is refreshing\n\n→ Complete now ${link}`,
+      3: `Hey ${userName},\n\nThe budget window for ${trip.name} has closed.\n\nWe've assigned you a budget based on your role. If you want to update it before the plan is finalised, do it now → ${link}`,
+    }
+
+    await sendEmail(member.email, subjects[effectiveStage], msgs[effectiveStage])
+    await db.from('members').update({
+      fomo_stage: effectiveStage,
+      last_fomo_sent_at: new Date(now).toISOString(),
+    }).eq('id', member.id)
   }
 
   return NextResponse.json({ ok: true, timestamp: new Date().toISOString() })

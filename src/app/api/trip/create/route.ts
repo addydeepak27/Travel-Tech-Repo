@@ -49,6 +49,9 @@ export async function POST(req: NextRequest) {
       ? `${destNames.slice(0, -1).join(', ')} or ${destNames[destNames.length - 1]}`
       : `${destNames[0]} Trip`
 
+  const now = new Date()
+  const questDeadline = new Date(now.getTime() + 2 * 3_600_000) // T+2h
+
   const { data: trip, error: tripError } = await db
     .from('trips')
     .insert({
@@ -60,7 +63,9 @@ export async function POST(req: NextRequest) {
       travel_code: travelCode,
       departure_date: travelMonth ? `${travelMonth}-01` : null,
       return_date: null,
-      status_updated_at: new Date().toISOString(),
+      status_updated_at: now.toISOString(),
+      questionnaire_started_at: now.toISOString(),
+      questionnaire_deadline_at: questDeadline.toISOString(),
     })
     .select()
     .single()
@@ -82,6 +87,7 @@ export async function POST(req: NextRequest) {
       brownie_points: 0,
       opt_out: false,
       joined_at: new Date().toISOString(),
+      last_active_at: new Date().toISOString(),
     })
     .select()
     .single()

@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
   // Override pace if explicitly provided (e.g. from dissent vibe selection)
   const effectivePaceOverride = (paceOverride as VotePace | undefined) ?? undefined
 
-  const { itinerary, for_you } = await generateItinerary(
+  const { plans, itinerary, for_you } = await generateItinerary(
     trip.confirmed_destination,
     hotel,
     avatarDistribution,
@@ -70,8 +70,9 @@ export async function POST(req: NextRequest) {
 
   // Remove the now-redundant trip_id override since generateItinerary sets it correctly
 
-  // Save itinerary on trip
+  // Store all 3 plans in itinerary_options; seed itinerary with Balanced Mix as default
   await db.from('trips').update({
+    itinerary_options: plans,
     itinerary,
     status: 'itinerary_vote',
   }).eq('id', tripId)

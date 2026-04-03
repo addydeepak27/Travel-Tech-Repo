@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { AvatarType, BudgetTier, Hotel, ItineraryDay, ForYouCallout, VotePace, Member } from '@/types'
+import type { AvatarType, BudgetTier, Hotel, ItineraryDay, ItineraryPlan, ForYouCallout, VotePace, Member } from '@/types'
 import { AVATAR_META, BUDGET_TIER_META } from '@/types'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
@@ -157,7 +157,7 @@ export async function generateItinerary(
   members: Pick<Member, 'id' | 'avatar' | 'budget_tier' | 'spend_vote'>[],
   tripId: string,
   paceOverride?: VotePace
-): Promise<{ itinerary: ItineraryDay[]; for_you: ForYouCallout[] }> {
+): Promise<{ plans: ItineraryPlan[]; itinerary: ItineraryDay[]; for_you: ForYouCallout[] }> {
   const topAvatars = Object.entries(avatarDistribution)
     .filter(([, count]) => count > 0)
     .sort(([, a], [, b]) => b - a)
@@ -168,65 +168,78 @@ export async function generateItinerary(
 
   const tierMeta = BUDGET_TIER_META[budgetTier]
 
-  const prompt = `You are a travel itinerary expert for Indian domestic travel. Create a day-by-day itinerary for ${destination}.
+  const prompt = `You are a travel itinerary expert for Indian domestic travel. Create 3 distinct 3-day itinerary plans for ${destination}.
 
 Hotel: ${hotel.name}, ${hotel.neighbourhood}
-Trip duration: ${tripDurationDays} days
 Budget tier: ${tierMeta.label} (${tierMeta.range}/person total)
 Daily spend ceiling: ${tierMeta.daily_spend_ranges[1]} per person
 Group avatar mix: ${topAvatars.join(', ')}
-Group pace preference: ${dominantPace.replace(/_/g, ' ')}
+Group pace preference hint: ${dominantPace.replace(/_/g, ' ')}
 
-Itinerary rules:
-1. Activities are clustered near the hotel — minimise unnecessary travel
-2. Top 2 avatars by count drive the day structure
-3. Every other avatar present gets at least 1 named activity across the trip
-4. No activity costs more than the daily spend ceiling
-5. Foodie avatar present → all 3 meal slots are named venues (not "grab food")
-6. Adventure Seeker present → at least 1 outdoor activity per day
-7. Photographer present → at least 1 golden hour slot per day with exact time
-8. Spontaneous One present → 1 open "surprise slot" per day (label as "Free slot — ✨ Surprise incoming")
-9. Navigator present → include travel time between locations
-10. Return ONLY valid JSON, no markdown
+STRICT RULES — violating any rule makes the response invalid:
+1. Return ONLY valid JSON. No markdown, no commentary, no code fences.
+2. Exactly 3 plans in the plans array.
+3. Plan labels must be exactly: "Chill", "Party", "Balanced".
+4. Exactly 3 days per plan, exactly 3 activities per day.
+5. Each activity title: 6 words or fewer.
+6. Activities clustered near the hotel — minimise travel.
+7. No activity costs more than the daily spend ceiling.
+8. Top 2 avatars by count drive the day structure across all plans.
+9. Foodie present → all meal activities are named venues (not "grab food").
+10. Adventure Seeker present → 1 outdoor activity per day in Packed & Active plan.
+11. Photographer present → 1 golden hour slot per day with exact time in title.
 
-Return this exact JSON:
+Return this exact JSON structure:
 {
-  "itinerary": [
+  "plans": [
     {
-      "day": 1,
-      "date": "Day 1",
-      "title": "Arrival & first impressions",
-      "activities": [
-        { "time": "09:00", "title": "Activity name", "description": "1-2 sentences", "cost_per_person": 500, "type": "activity" }
+      "label": "Chill Mode",
+      "days": [
+        {
+          "day": 1,
+          "date": "Day 1",
+          "title": "Arrival & unwind",
+          "activities": [
+            { "time": "09:00", "title": "Six words max here", "description": "1-2 sentences", "cost_per_person": 500, "type": "activity" }
+          ]
+        }
       ]
     }
   ]
 }`
 
-  let itinerary: ItineraryDay[] = []
+  let plans: ItineraryPlan[] = []
 
   try {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
+      max_tokens: 6000,
       messages: [{ role: 'user', content: prompt }],
     })
     const text = (response.content[0] as { type: string; text: string }).text
     const parsed = JSON.parse(text)
-    itinerary = parsed.itinerary
+    plans = parsed.plans
   } catch {
-    // Minimal fallback itinerary
-    itinerary = Array.from({ length: tripDurationDays }, (_, i) => ({
+    // Minimal fallback — 3 identical plans with different labels
+    const fallbackDays: ItineraryDay[] = Array.from({ length: 3 }, (_, i) => ({
       day: i + 1,
       date: `Day ${i + 1}`,
-      title: i === 0 ? 'Arrival & exploration' : i === tripDurationDays - 1 ? 'Final day & departure' : `Day ${i + 1} — ${destination}`,
+      title: i === 0 ? 'Arrival & exploration' : i === 2 ? 'Final day & departure' : `Day ${i + 1} — ${destination}`,
       activities: [
         { time: '10:00', title: 'Explore the area', description: `Discover ${destination} at your own pace.`, cost_per_person: 0, type: 'free' as const },
-        { time: '13:00', title: 'Lunch', description: 'Local restaurant near the hotel.', cost_per_person: 300, type: 'food' as const },
-        { time: '19:00', title: 'Dinner', description: 'Group dinner at a recommended spot.', cost_per_person: 500, type: 'food' as const },
+        { time: '13:00', title: 'Lunch spot nearby', description: 'Local restaurant near the hotel.', cost_per_person: 300, type: 'food' as const },
+        { time: '19:00', title: 'Group dinner out', description: 'Group dinner at a recommended spot.', cost_per_person: 500, type: 'food' as const },
       ],
     }))
+    plans = [
+      { label: 'Chill', days: fallbackDays },
+      { label: 'Party', days: fallbackDays },
+      { label: 'Balanced', days: fallbackDays },
+    ]
   }
+
+  // Use the Balanced Mix plan (index 1) as the primary for For You callouts
+  const itinerary: ItineraryDay[] = plans[1]?.days ?? plans[0]?.days ?? []
 
   // Generate For You callouts per member per day
   const for_you: ForYouCallout[] = []
@@ -289,7 +302,7 @@ Return this exact JSON:
     void avatarMeta
   }
 
-  return { itinerary, for_you }
+  return { plans, itinerary, for_you }
 }
 
 // ── Organiser cost tips ────────────────────────────────────────────────────

@@ -42,6 +42,8 @@ export type TaskStatus = 'pending' | 'done' | 'overdue' | 'reassigned'
 
 export type VotePace = 'easy_chill' | 'balanced_mix' | 'packed_schedule'
 
+export type NudgeFrequencyType = 'gentle' | 'normal' | 'aggressive' | 'custom'
+
 export type VoteSpend = 'low' | 'mid' | 'high'
 
 export interface Trip {
@@ -53,6 +55,7 @@ export interface Trip {
   confirmed_destination: string | null
   confirmed_hotel: Hotel | null
   itinerary: ItineraryDay[] | null
+  itinerary_options: ItineraryPlan[] | null
   departure_date: string | null
   return_date: string | null
   group_budget_zone: { min: number; max: number } | null
@@ -64,6 +67,10 @@ export interface Trip {
   destination_vote_scheduled_at: string | null
   used_fallback: boolean
   itinerary_cost_alert: boolean
+  questionnaire_started_at: string | null
+  questionnaire_deadline_at: string | null
+  nudge_frequency_type: NudgeFrequencyType
+  nudge_frequency_value: number | null
 }
 
 export interface Member {
@@ -87,6 +94,12 @@ export interface Member {
   brownie_points: number
   budget_assumed: boolean
   avatar_auto_assigned: boolean
+  last_active_at: string | null
+  updated_at: string | null
+  budget_range: string | null
+  budget_value_per_day: number | null
+  fomo_stage: number
+  last_fomo_sent_at: string | null
 }
 
 export interface Hotel {
@@ -101,6 +114,11 @@ export interface Hotel {
   map_image_url: string | null
   lat: number | null
   lng: number | null
+}
+
+export interface ItineraryPlan {
+  label: string       // e.g. "Chill Mode" | "Balanced Mix" | "Packed & Active"
+  days: ItineraryDay[]
 }
 
 export interface ItineraryDay {
