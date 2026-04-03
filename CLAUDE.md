@@ -208,3 +208,7 @@
 ## Session: 2026-04-03 17:12
 **Changed:** src/app/api/cron/nudge/route.ts src/app/api/member/preferences/route.ts src/app/api/organizer/nudge/route.ts src/app/api/trip/create/route.ts src/app/trip/[tripId]/page.tsx src/lib/trip-checks.ts src/types/index.ts src/components/ src/lib/budget.ts supabase/migrations/003_organizer_abandonment.sql 
 **Recent commits:** c598b18 session log: 2026-04-03 17:09 80e32d6 session log: 2026-04-03 17:06 7b88477 session log: 2026-04-03 17:04 
+
+## Session: 2026-04-03 17:14
+**Changed:** src/app/api/cron/nudge/route.ts src/app/api/member/preferences/route.ts src/app/api/organizer/nudge/route.ts src/app/api/trip/create/route.ts src/app/trip/[tripId]/page.tsx src/lib/trip-checks.ts src/types/index.ts src/components/ src/lib/budget.ts supabase/migrations/003_organizer_abandonment.sql 
+**Recent commits:** bea2d69 session log: 2026-04-03 17:12 c598b18 session log: 2026-04-03 17:09 80e32d6 session log: 2026-04-03 17:06 
