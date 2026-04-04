@@ -475,3 +475,7 @@
 ## Session: 2026-04-05 00:34
 **Changed:** src/app/api/trip/[tripId]/join-info/route.ts src/app/api/trip/vote/route.ts src/app/join/[tripId]/page.tsx src/app/organizer/[tripId]/page.tsx src/app/page.tsx src/app/api/trip/[tripId]/invite/ 
 **Recent commits:** f667678 session log: 2026-04-04 21:47 2f1ad9f session log: 2026-04-04 21:34 b18d6c4 session log: 2026-04-04 21:33 
+
+## Session: 2026-04-05 00:37
+**Changed:** src/app/api/trip/[tripId]/join-info/route.ts src/app/api/trip/vote/route.ts src/app/join/[tripId]/page.tsx src/app/organizer/[tripId]/page.tsx src/app/page.tsx src/app/api/trip/[tripId]/invite/ 
+**Recent commits:** 28be719 session log: 2026-04-05 00:34 f667678 session log: 2026-04-04 21:47 2f1ad9f session log: 2026-04-04 21:34 
