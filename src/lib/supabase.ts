@@ -10,8 +10,10 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 // Server-side client with service role (API routes only)
 export function createServiceClient() {
+  const raw = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+  const url = raw.startsWith('http') ? raw : 'https://placeholder.supabase.co'
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+    url,
     process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-service-key',
     { auth: { autoRefreshToken: false, persistSession: false } }
   )
