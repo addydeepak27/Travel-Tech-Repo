@@ -425,3 +425,21 @@
 ## Session: 2026-04-04 21:06
 **Changed:** src/app/api/cron/nudge/route.ts src/app/api/trip/[tripId]/consent/route.ts src/app/api/trip/create/route.ts src/app/join/[tripId]/page.tsx src/app/page.tsx src/lib/constants.ts 
 **Recent commits:** 623bfc3 session log: 2026-04-04 20:46 0765bca session log: 2026-04-04 20:39 653fca7 feat: catchy invite + countdown email copy 
+
+## Session: 2026-04-04 (invited user audit + date picker fix)
+**Commit:** e2ea462 fix: invited user flow edge cases + date picker UX
+**Changed:** src/app/api/cron/nudge/route.ts src/app/api/trip/[tripId]/consent/route.ts src/app/api/trip/create/route.ts src/app/join/[tripId]/page.tsx src/app/page.tsx src/lib/constants.ts
+
+**Bugs fixed:**
+- avatar_selected missing from ACTIVE_MEMBER_STATUSES — excluded from vote nudges, active counts
+- avatar_selected missing from cron questStates — got no questionnaire reminder emails
+- consent route: avatar_selection + pref_q* not in ACTIVE_STATUSES — status regressed on re-visit
+- join page useEffect: avatar_selection showed landing (consent buttons) instead of questions step
+- join page handleSelfJoin: doConsent() called for already-progressed members (regression risk)
+- submitPreferences: stale error shown on retry — now cleared before each attempt
+- create route: destNames[0] null → "undefined or Bust" trip name — added ?? fallback
+- cron section 4: tripData undefined (variable from section 3 scope) — now joins trips(name) in query
+
+**Vote deadline UX:**
+- datetime-local → date input (no time selector, clean calendar only)
+- Min date: tomorrow; payload appends T23:59:00; confirmation shows "end of day on [date]"
