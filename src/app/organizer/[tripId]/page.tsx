@@ -277,18 +277,6 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
     )
   }
 
-  // Guard: only the actual organizer can view this page
-  if (organizerId && trip.organizer_id && organizerId !== trip.organizer_id) {
-    return (
-      <div className="min-h-dvh flex flex-col items-center justify-center px-5 text-center safe-top safe-bottom" style={{ background: 'var(--background)' }}>
-        <div className="text-4xl mb-3">🔒</div>
-        <h1 className="text-xl font-bold mb-1">Organizer only</h1>
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
-          This dashboard is only for the trip organizer.
-        </p>
-      </div>
-    )
-  }
 
   const activeMembers = members.filter(m => ['consented', 'avatar_selected', 'budget_submitted', 'active'].includes(m.status))
   const nonResponders = members.filter(m => m.status === 'invited')

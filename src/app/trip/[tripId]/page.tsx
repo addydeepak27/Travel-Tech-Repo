@@ -750,51 +750,6 @@ function NextMoveCard({
   )
 }
 
-// ── Momentum Card ─────────────────────────────────────────────────────────────
-const BAR_BLOCKS = 10
-
-function formatTimeLeft(deadlineIso: string | null): string {
-  if (!deadlineIso) return ''
-  const ms = new Date(deadlineIso).getTime() - Date.now()
-  if (ms <= 0) return 'Closed'
-  const totalMins = Math.floor(ms / 60000)
-  if (totalMins < 60) return `${totalMins}m left`
-  const h = Math.floor(totalMins / 60)
-  const m = totalMins % 60
-  if (h < 24) return m > 0 ? `${h}h ${m}m left` : `${h}h left`
-  return `${Math.floor(h / 24)}d left`
-}
-
-function MomentumCard({
-  trip,
-  members,
-}: {
-  trip: Trip
-  members: Member[]
-  hypeScore: number
-  tripId: string
-}) {
-  const eligible = members.filter(m => !['declined', 'dropped'].includes(m.status))
-  const completed = eligible.filter(m => m.budget_tier !== null).length
-  const total = eligible.length
-
-  const filled = total > 0 ? Math.round((completed / total) * BAR_BLOCKS) : 0
-  const bar = '█'.repeat(filled) + '░'.repeat(BAR_BLOCKS - filled)
-
-  const timeLeft = formatTimeLeft(trip.questionnaire_deadline_at)
-
-  return (
-    <Card>
-      <div className="space-y-3">
-        <p className="text-base font-semibold">⚡ {completed}/{total}</p>
-        <p className="font-mono text-lg tracking-widest text-indigo-500">{bar}</p>
-        {timeLeft && (
-          <p className="text-xs text-gray-400">⏳ {timeLeft}</p>
-        )}
-      </div>
-    </Card>
-  )
-}
 
 // ── Budget Split Card ─────────────────────────────────────────────────────────
 const TIER_DAILY_COMPACT: Record<BudgetTier, string> = {
@@ -1291,7 +1246,6 @@ export default function TripDashboard({ params }: { params: Promise<{ tripId: st
         {stage === 'preferences' && (
           <>
             <NextMoveCard trip={trip} myMember={myMember} tripId={tripId} members={members} />
-            <MomentumCard trip={trip} members={members} hypeScore={hypeScore} tripId={tripId} />
             <BudgetSplitCard trip={trip} members={members} myMember={myMember} />
             <LeaderboardCard members={members} myMember={myMember} />
           </>
