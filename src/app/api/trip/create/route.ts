@@ -43,7 +43,9 @@ export async function POST(req: NextRequest) {
   const isOrganizerPick = destinationMode === 'organizer_pick'
 
   const destinationOptionsValue = Array.isArray(destinations) ? destinations : [destinations]
-  const destNames = destinationOptionsValue.map((d: { name?: string } | string) => (typeof d === 'object' ? d?.name : d) ?? d)
+  const destNames = destinationOptionsValue
+    .map((d: { name?: string } | string) => (typeof d === 'object' ? d?.name : d))
+    .filter((n): n is string => Boolean(n))
   const tripName = isOrganizerPick
     ? `${destNames[0]} or Bust`
     : destNames.length > 1

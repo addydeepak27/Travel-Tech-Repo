@@ -132,7 +132,11 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
           const me = data.members?.find((m: { id: string }) => m.id === urlMemberId)
           if (me?.opt_out || me?.status === 'declined') {
             setAlreadyResponded('out')
-          } else if (['consented', 'avatar_selected', 'budget_submitted', 'active'].includes(me?.status ?? '')) {
+          } else if (me?.status === 'consented') {
+            setStep('avatar')
+          } else if (me?.status === 'avatar_selected') {
+            setStep('questions')
+          } else if (['budget_submitted', 'active'].includes(me?.status ?? '')) {
             setAlreadyResponded('in')
           }
         }
@@ -155,7 +159,7 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
       const res = await fetch(`/api/trip/${tripId}/self-join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: selfEmail }),
+        body: JSON.stringify({ email: selfEmail.toLowerCase().trim() }),
       })
       if (res.status === 403) { setSelfEmailError("You've declined this trip. Ask the organiser to re-invite you."); setSelfEmailLookingUp(false); return }
       if (!res.ok) { setSelfEmailError('Something went wrong — try again.'); setSelfEmailLookingUp(false); return }
@@ -207,21 +211,24 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
     if (savingAvatar || !resolvedMemberId || !memberName.trim()) return
     setSavingAvatar(true)
     setAvatarError(null)
-    const res = await fetch('/api/member/avatar', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ memberId: resolvedMemberId, avatar, name: memberName.trim() || undefined }),
-    })
-    if (res.status === 409) {
-      // Avatar just taken by someone else — mark it and let user pick again
-      setTakenAvatars(prev => new Set([...prev, avatar]))
+    try {
+      const res = await fetch('/api/member/avatar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId: resolvedMemberId, avatar, name: memberName.trim() }),
+      })
+      if (res.status === 409) {
+        setTakenAvatars(prev => new Set([...prev, avatar]))
+        setAvatarError('taken')
+        return
+      }
+      if (!res.ok) { setAvatarError('generic'); return }
+      setStep('questions')
+    } catch {
+      setAvatarError('generic')
+    } finally {
       setSavingAvatar(false)
-      setAvatarError('taken')
-      return
     }
-    if (!res.ok) { setSavingAvatar(false); setAvatarError('generic'); return }
-    setStep('questions')
-    setSavingAvatar(false)
   }
 
   async function handleAnswer(questionId: string, value: string) {
@@ -238,7 +245,7 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
     if (submitting || !resolvedMemberId) return
     setSubmitting(true)
     try {
-      await fetch('/api/member/preferences', {
+      const res = await fetch('/api/member/preferences', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -250,9 +257,14 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
           special_requests: null,
         }),
       })
-    } catch { /* still advance to done */ }
-    setStep('done')
-    setSubmitting(false)
+      if (!res.ok) throw new Error('Preferences save failed')
+      setStep('done')
+    } catch {
+      // Show last question again with a retry option — don't advance to done
+      setQuestionStep(QUESTIONS.length - 1)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   // ── Loading / error states ─────────────────────────────────────────────────
