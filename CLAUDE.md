@@ -443,3 +443,7 @@
 **Vote deadline UX:**
 - datetime-local → date input (no time selector, clean calendar only)
 - Min date: tomorrow; payload appends T23:59:00; confirmation shows "end of day on [date]"
+
+## Session: 2026-04-04 21:09
+**Changed:** src/app/page.tsx 
+**Recent commits:** 83f31f4 session log: 2026-04-04 invited user audit + date picker fix e2ea462 fix: invited user flow edge cases + date picker UX d22a161 session log: 2026-04-04 21:06 
