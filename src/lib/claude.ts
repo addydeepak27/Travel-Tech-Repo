@@ -2,7 +2,10 @@ import Anthropic from '@anthropic-ai/sdk'
 import type { AvatarType, BudgetTier, Hotel, ItineraryDay, ItineraryPlan, ForYouCallout, VotePace, Member } from '@/types'
 import { AVATAR_META, BUDGET_TIER_META } from '@/types'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
+// Lazy init — avoids module-level crash when ANTHROPIC_API_KEY is not set at build time
+function getClient() {
+  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' })
+}
 
 // ── Destination suggestions ────────────────────────────────────────────────
 
@@ -38,7 +41,7 @@ Return this exact JSON structure:
 ]`
 
   try {
-    const response = await anthropic.messages.create({
+    const response = await getClient().messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 600,
       messages: [{ role: 'user', content: prompt }],
@@ -114,7 +117,7 @@ Return this exact JSON structure:
 ]`
 
   try {
-    const response = await anthropic.messages.create({
+    const response = await getClient().messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 800,
       messages: [{ role: 'user', content: prompt }],
@@ -211,7 +214,7 @@ Return this exact JSON structure:
   let plans: ItineraryPlan[] = []
 
   try {
-    const response = await anthropic.messages.create({
+    const response = await getClient().messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 6000,
       messages: [{ role: 'user', content: prompt }],
@@ -333,7 +336,7 @@ Return this exact JSON:
 ]`
 
   try {
-    const response = await anthropic.messages.create({
+    const response = await getClient().messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 400,
       messages: [{ role: 'user', content: prompt }],
