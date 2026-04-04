@@ -413,3 +413,7 @@
 - Name input: "Your name or squad nickname" placeholder; required before avatar can be selected
 - Brownie points gift teaser: upgraded to gradient card with 🎁 headline "Brownie points = real gifts"
 - Travel code lookup: temporarily disabled (always returns invalid; re-enable in lookupCode() in page.tsx)
+
+## Session: 2026-04-04 20:39
+**Changed:** src/app/api/cron/nudge/route.ts 
+**Recent commits:** 653fca7 feat: catchy invite + countdown email copy e8577c2 fix: nudge always works + catchy email copy with organizer jokes e23e9b9 fix: organizer redirect after prefs + budget split bars + leaderboard names 
