@@ -359,3 +359,7 @@
 ## Session: 2026-04-04 11:44
 **Changed:** src/app/join/[tripId]/page.tsx src/app/trip/[tripId]/page.tsx src/lib/email.ts 
 **Recent commits:** e769451 session log: 2026-04-04 11:36 c0e520d session log: 2026-04-04 11:26 06c9d8a session log: 2026-04-04 11:17 
+
+## Session: 2026-04-04 11:53
+**Changed:** src/app/join/[tripId]/page.tsx src/app/organizer/[tripId]/page.tsx src/app/trip/[tripId]/page.tsx src/lib/email.ts 
+**Recent commits:** 552a7e4 session log: 2026-04-04 11:44 e769451 session log: 2026-04-04 11:36 c0e520d session log: 2026-04-04 11:26 
