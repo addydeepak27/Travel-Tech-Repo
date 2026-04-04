@@ -175,7 +175,7 @@ export default function PreferencesPage({
         <div className="text-center px-5 space-y-3">
           <div className="text-3xl">📅</div>
           <p className="text-sm font-medium">No travel month set</p>
-          <p className="text-xs" style={{ color: 'var(--muted)' }}>Skipping date step — the organiser hasn&apos;t set a travel month yet.</p>
+          <p className="text-xs" style={{ color: 'var(--muted)' }}>Skipping date step — the organizer hasn&apos;t set a travel month yet.</p>
           <button
             onClick={() => setStep(s => s + 1)}
             className="px-5 py-2.5 rounded-xl text-sm font-semibold"

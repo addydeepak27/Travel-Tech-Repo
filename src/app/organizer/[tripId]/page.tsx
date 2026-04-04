@@ -263,7 +263,7 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
       <div className="min-h-dvh flex items-center justify-center" style={{ background: 'var(--background)' }}>
         <div className="text-center space-y-2">
           <div className="text-4xl animate-pulse">📋</div>
-          <p className="text-sm" style={{ color: 'var(--muted)' }}>Loading organiser view…</p>
+          <p className="text-sm" style={{ color: 'var(--muted)' }}>Loading organizer view…</p>
         </div>
       </div>
     )
@@ -282,9 +282,9 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
     return (
       <div className="min-h-dvh flex flex-col items-center justify-center px-5 text-center safe-top safe-bottom" style={{ background: 'var(--background)' }}>
         <div className="text-4xl mb-3">🔒</div>
-        <h1 className="text-xl font-bold mb-1">Organiser only</h1>
+        <h1 className="text-xl font-bold mb-1">Organizer only</h1>
         <p className="text-sm" style={{ color: 'var(--muted)' }}>
-          This dashboard is only for the trip organiser.
+          This dashboard is only for the trip organizer.
         </p>
       </div>
     )

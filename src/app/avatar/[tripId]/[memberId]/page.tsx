@@ -8,7 +8,7 @@ import type { AvatarType } from '@/types'
 const AVATAR_TAGLINES: Record<AvatarType, string> = {
   planner:        'Someone has to be the adult. Congrats, it\'s you. 😅',
   navigator:      'Getting everyone from A to B without losing anyone. No pressure. 🗺️',
-  budgeteer:      'You\'ll be everyone\'s favourite person… until the bill arrives. 💸',
+  budgeteer:      'You\'ll be everyone\'s favorite person… until the bill arrives. 💸',
   foodie:         'The most important job on any trip. Don\'t let the group eat badly. 🙏',
   adventure_seeker: 'Your job is to make sure everyone has a story to tell. 🤙',
   photographer:   'You\'ll miss the moment, but the group will have the perfect photo of it. 📸',

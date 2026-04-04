@@ -162,7 +162,7 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: selfEmail.toLowerCase().trim() }),
       })
-      if (res.status === 403) { setSelfEmailError("You've declined this trip. Ask the organiser to re-invite you."); setSelfEmailLookingUp(false); return }
+      if (res.status === 403) { setSelfEmailError("You've declined this trip. Ask the organizer to re-invite you."); setSelfEmailLookingUp(false); return }
       if (!res.ok) { setSelfEmailError('Something went wrong — try again.'); setSelfEmailLookingUp(false); return }
       const { memberId: mid, status: memberStatus } = await res.json()
       setResolvedMemberId(mid)
@@ -295,7 +295,7 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
         <div className="text-4xl mb-4">🔍</div>
         <h1 className="text-xl font-bold mb-2">Trip not found</h1>
         <p className="text-sm mb-5" style={{ color: 'var(--muted)' }}>
-          This invite link may be invalid or expired. Ask the organiser to share a fresh link.
+          This invite link may be invalid or expired. Ask the organizer to share a fresh link.
         </p>
         <button
           onClick={() => { setLoadError(false); setLoading(true); setRetryCount(c => c + 1) }}

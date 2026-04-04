@@ -121,7 +121,7 @@ export default function HomePage() {
     setCodeError('')
     // Travel code lookup temporarily disabled — use your personal invite link instead
     await new Promise(r => setTimeout(r, 600))
-    setCodeError('Invalid code — ask your organiser to share the invite link directly.')
+    setCodeError('Invalid code — ask your organizer to share the invite link directly.')
     setLookingUp('')
   }
 
@@ -269,7 +269,7 @@ export default function HomePage() {
             <div>
               <div className="font-bold text-base">Join with a travel code</div>
               <div className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>
-                Enter the 6-letter code your organiser shared
+                Enter the 6-letter code your organizer shared
               </div>
             </div>
           </button>
@@ -284,7 +284,7 @@ export default function HomePage() {
         <div className="pt-10 pb-8">
           <button onClick={() => { setStep('intent'); setTravelCode(''); setCodeError('') }} className="text-sm mb-6" style={{ color: 'var(--muted)' }}>← Back</button>
           <h1 className="text-2xl font-bold">Enter travel code</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>6-letter code from your organiser</p>
+          <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>6-letter code from your organizer</p>
         </div>
 
         <div className="flex-1 space-y-4">
@@ -496,7 +496,7 @@ export default function HomePage() {
 
           {/* Travel Month */}
           <div>
-            <p className="text-xs font-semibold mb-2.5" style={{ color: 'var(--muted)' }}>WHEN ARE YOU TRAVELLING? <span style={{ color: 'var(--accent)', fontWeight: 600 }}>*</span></p>
+            <p className="text-xs font-semibold mb-2.5" style={{ color: 'var(--muted)' }}>WHEN ARE YOU TRAVELING? <span style={{ color: 'var(--accent)', fontWeight: 600 }}>*</span></p>
             <input
               type="month"
               value={travelMonth}

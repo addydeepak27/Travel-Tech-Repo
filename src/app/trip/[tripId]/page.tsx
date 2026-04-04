@@ -701,7 +701,7 @@ function NextMoveCard({
     },
     destination_vote_pending: {
       primary: 'Destination vote coming soon',
-      supporting: 'Your organizer is finalising the options. Hold tight.',
+      supporting: 'Your organizer is finalizing the options. Hold tight.',
     },
     destination_tiebreaker: {
       primary: "It's a tie — organizer decides",
@@ -1216,7 +1216,7 @@ export default function TripDashboard({ params }: { params: Promise<{ tripId: st
     return (
       <div className="min-h-dvh flex flex-col items-center justify-center px-5 text-center safe-top safe-bottom">
         <div className="text-4xl mb-3">🔗</div>
-        <h1 className="text-xl font-bold mb-1">Not recognised</h1>
+        <h1 className="text-xl font-bold mb-1">Not recognized</h1>
         <p className="text-sm mb-5" style={{ color: 'var(--muted)' }}>
           We can&apos;t find your profile for <strong>{trip.name}</strong>. Use your original invite link or rejoin below.
         </p>
