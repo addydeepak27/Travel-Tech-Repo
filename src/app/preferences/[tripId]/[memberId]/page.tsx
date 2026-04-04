@@ -63,8 +63,9 @@ export default function PreferencesPage({
   const [done, setDone] = useState(false)
   const [travelMonth, setTravelMonth] = useState<string | null>(null)
   const [monthError, setMonthError] = useState(false)
+  const [tripOrganizerId, setTripOrganizerId] = useState<string | null>(null)
 
-  // Fetch trip travel month
+  // Fetch trip travel month + organizer id
   useEffect(() => {
     fetch(`/api/trip/${tripId}/dashboard-info`)
       .then(r => r.json())
@@ -75,6 +76,7 @@ export default function PreferencesPage({
         } else {
           setMonthError(true) // no departure_date set — skip date step gracefully
         }
+        setTripOrganizerId(d?.trip?.organizer_id ?? null)
       })
       .catch(() => setMonthError(true))
   }, [tripId])
@@ -157,11 +159,11 @@ export default function PreferencesPage({
           Your preferences have been added to the group. We&apos;ll email you as the plan comes together.
         </p>
         <button
-          onClick={() => router.push(`/trip/${tripId}`)}
+          onClick={() => router.push(memberId === tripOrganizerId ? `/organizer/${tripId}` : `/trip/${tripId}`)}
           className="px-6 py-3 rounded-2xl font-semibold text-sm"
           style={{ background: 'linear-gradient(135deg, #7c3aed, #db2777)', color: '#fff', boxShadow: '0 4px 16px rgba(124,58,237,0.3)' }}
         >
-          View Trip Dashboard →
+          {memberId === tripOrganizerId ? 'Go to Organizer Dashboard →' : 'View Trip Dashboard →'}
         </button>
       </div>
     )

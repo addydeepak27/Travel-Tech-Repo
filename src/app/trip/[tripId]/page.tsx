@@ -779,14 +779,20 @@ function BudgetSplitCard({ trip, members, myMember }: { trip: Trip; members: Mem
 
         {rows.map(tier => {
           const count = stats.counts[tier]
+          const pct = stats.total > 0 ? Math.round((count / stats.total) * 100) : 0
           const isPlurality = tier === stats.plurality && rows.length > 1
           return (
-            <div key={tier} className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm font-medium">{TIER_DAILY_COMPACT[tier]}</span>
-                {isPlurality && <span className="text-sm">🔥</span>}
+            <div key={tier} className="space-y-1">
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium">{TIER_DAILY_COMPACT[tier]}</span>
+                  {isPlurality && <span>🔥</span>}
+                </div>
+                <span className="font-medium" style={{ color: 'var(--muted)' }}>{count} member{count !== 1 ? 's' : ''}</span>
               </div>
-              <span className="text-sm text-gray-400">{count}</span>
+              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--card-border)' }}>
+                <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: isPlurality ? 'var(--accent)' : '#94a3b8' }} />
+              </div>
             </div>
           )
         })}
@@ -859,8 +865,9 @@ function LeaderboardCard({ members, myMember }: { members: Member[]; myMember: M
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
                   <span className={`text-sm font-medium truncate ${isMe ? 'text-indigo-600' : ''}`}>
-                    {isMe ? 'You' : (m.name ?? meta?.label ?? 'Member')}
+                    {m.name ?? meta?.label ?? 'Member'}
                   </span>
+                  {isMe && <span className="text-xs px-1.5 py-0.5 rounded-md shrink-0" style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}>you</span>}
                   {isMe && isLate && (
                     <span className="text-xs text-amber-500 shrink-0">(late 😬)</span>
                   )}
