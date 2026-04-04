@@ -136,16 +136,16 @@ export async function POST(req: NextRequest) {
     const personalLink = `${appUrl}/join/${trip.id}?m=${m.id}`
     await sendEmail(
       m.email,
-      `${organizerName ?? 'Someone'} is planning ${tripName} — you're invited 🌊`,
-      `${organizerName ?? 'The Planner'} is organising ${tripName} 🌊\n\nDon't be the one friend who finds out about this trip from their Instagram stories 😬\n\nRoles needed: ${neededRoles}\n(each role owns part of the planning)\n\nJoin here → ${personalLink}\n\nOr enter code ${travelCode} at ${appUrl}\n\nReply to this email to decline.`
+      `${organizerName ?? 'Someone'} is planning ${tripName} and YOU made the cut ✈️`,
+      `Hey!\n\n${organizerName ?? 'Your friend'} spent way too long on a spreadsheet planning ${tripName} — and you're on the invite list. Congrats.\n\nBefore you ghost this email: there are roles. Real ones. The Foodie finds the restaurants. The Navigator keeps everyone from getting lost. The Budgeteer stops the group from going broke on day 2.\n\n👉 Your personal link (1 tap, no sign-up): ${personalLink}\n\nDon't be the one friend who finds out from someone else's Instagram story 😬\n\nRoles filling up: ${neededRoles}\n\nTravel code if you lose this email: ${travelCode}\n\n— The Toh Chale squad bot (${organizerName ?? 'your organizer'} made us send this)`
     )
   }
 
   const dashboardUrl = `${appUrl}/organizer/${trip.id}`
   await sendEmail(
     organizerEmail,
-    `✅ ${tripName} is live! Travel code: ${travelCode}`,
-    `Your trip is live!\n\nTravel code: ${travelCode}\nShare this to invite anyone: ${joinUrl}\n\nMonitor your trip → ${dashboardUrl}`
+    `🎉 ${tripName} is live — invites sent!`,
+    `Your trip is live and the invites are out!\n\nHere's what you need:\n📋 Organizer dashboard → ${dashboardUrl}\n🔗 Generic invite link → ${joinUrl}\n🔑 Travel code → ${travelCode}\n\nWhat to do next:\n→ Share your invite link with anyone you missed\n→ Nudge anyone who hasn't joined from your dashboard\n→ Fill in your own preferences so the AI can build the plan\n\nPS: The AI can't do anything until at least 2 people fill their preferences. Hint hint 😅`
   )
 
   return NextResponse.json({

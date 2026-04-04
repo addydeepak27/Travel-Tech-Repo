@@ -322,18 +322,22 @@ export async function GET(req: NextRequest) {
         .eq('vote_type', `countdown_${daysOut}`).single()
       if (alreadySent) continue
 
+      let subject = ''
       let msg = ''
       if (daysOut >= 8) {
-        msg = `In ${daysOut} days: You're going to ${trip.confirmed_destination}! ${(trip.confirmed_hotel as { name?: string })?.name ? `Staying at ${(trip.confirmed_hotel as { name: string }).name} 🏨` : ''}`
+        subject = `${daysOut} days to ${trip.confirmed_destination} 🗓 — mark your calendar`
+        msg = `${daysOut} days. That's it.\n\nYou're going to ${trip.confirmed_destination} with your squad for ${trip.name}.${(trip.confirmed_hotel as { name?: string })?.name ? `\n\nYou're staying at ${(trip.confirmed_hotel as { name: string }).name} 🏨 — don't forget to pack accordingly.` : ''}\n\nThe organizer planned this whole thing. The least you can do is show up on time.`
       } else if (daysOut >= 2) {
         const day1 = (trip.itinerary as { activities?: { title: string }[] }[] | null)?.[0]
         const firstActivity = day1?.activities?.[0]?.title
-        msg = `In ${daysOut} days: ${firstActivity ? `Day 1 plan includes ${firstActivity}.` : `${trip.confirmed_destination} is almost here!`} 🎉`
+        subject = `${daysOut} days to ${trip.confirmed_destination} — it's almost time! 🎉`
+        msg = `${trip.confirmed_destination} in ${daysOut} days. The squad is (probably) excited.\n\n${firstActivity ? `Day 1 kicks off with: ${firstActivity} 🔥` : `${trip.confirmed_destination} is almost here — time to get excited!`}\n\nCheck the full plan and your for-you highlights in the app.`
       } else {
-        msg = `${trip.name} is tomorrow! Everything is planned. Just pack. 🎒`
+        subject = `🚨 ${trip.name} is TOMORROW — have you packed?`
+        msg = `Tomorrow. ${trip.confirmed_destination}. The whole squad.\n\nEverything is planned. The itinerary is set. The hotel is booked.\n\nAll you have to do is pack and not miss your travel time. 🎒\n\nSee you there!`
       }
 
-      await sendEmail(member.email, `${trip.name} — ${daysOut} day${daysOut > 1 ? 's' : ''} to go!`, msg)
+      await sendEmail(member.email, subject, msg)
       await db.from('nudges').insert({
         trip_id: trip.id, member_id: member.id,
         vote_type: `countdown_${daysOut}`, stage: 1,
