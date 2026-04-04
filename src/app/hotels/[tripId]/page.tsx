@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
-import type { Hotel, Member } from '@/types'
+import type { Hotel } from '@/types'
 
 export default function HotelsPage({ params }: { params: Promise<{ tripId: string }> }) {
   const { tripId } = use(params)
@@ -13,63 +13,99 @@ export default function HotelsPage({ params }: { params: Promise<{ tripId: strin
   const [tally, setTally] = useState<Record<string, number>>({})
   const [totalVoters, setTotalVoters] = useState(0)
   const [loading, setLoading] = useState(true)
-
-  // Identify member via URL token (simplified: use localStorage in demo)
-  const [memberId, setMemberId] = useState<string | null>(null)
-
-  useEffect(() => {
-    // In production, member token comes from the URL query or cookie
-    const stored = localStorage.getItem(`ts_member_${tripId}`)
-    setMemberId(stored)
-  }, [tripId])
+  const [voting, setVoting] = useState(false)
+  const [voteError, setVoteError] = useState<string | null>(null)
 
   useEffect(() => {
+    // Read memberId from localStorage — no separate state needed to avoid cascading renders
+    const memberId = localStorage.getItem(`ts_member_${tripId}`)
+
     async function load() {
-      const { data } = await supabase
-        .from('trips')
-        .select('name, hotel_options, group_budget_zone, votes(*), members(id, status)')
-        .eq('id', tripId)
-        .single()
+      try {
+        // Use service-role API route — anon client would be blocked by RLS
+        const [tripRes, votesRes] = await Promise.all([
+          fetch(`/api/trip/${tripId}/dashboard-info`),
+          fetch(`/api/trip/${tripId}/votes?voteType=hotel`),
+        ])
 
-      if (!data) return
+        if (!tripRes.ok) { setLoading(false); return }
+        const data = await tripRes.json()
+        const trip = data.trip
 
-      setTripName(data.name)
-      setHotels(data.hotel_options ?? [])
-      setBudgetZone(data.group_budget_zone)
+        setTripName(trip.name)
+        setHotels(trip.hotel_options ?? [])
+        setBudgetZone(trip.group_budget_zone)
 
-      const voters = (data.members ?? []).filter((m: { id: string; status: string }) =>
-        ['consented', 'active'].includes(m.status)
-      )
-      setTotalVoters(voters.length)
+        const activeStatuses = ['consented', 'avatar_selected', 'budget_submitted', 'active']
+        const voters = (data.members ?? []).filter((m: { status: string }) => activeStatuses.includes(m.status))
+        setTotalVoters(voters.length)
 
-      const hotelVotes = (data.votes ?? []).filter((v: { vote_type: string }) => v.vote_type === 'hotel')
-      const t: Record<string, number> = {}
-      for (const v of hotelVotes) { t[v.value] = (t[v.value] ?? 0) + 1 }
-      setTally(t)
-
-      if (memberId) {
-        const mine = hotelVotes.find((v: { member_id: string; value: string }) => v.member_id === memberId)
-        if (mine) setMyVote(mine.value)
-      }
-
+        if (votesRes.ok) {
+          const hotelVotes: { value: string; member_id: string }[] = await votesRes.json()
+          const t: Record<string, number> = {}
+          for (const v of hotelVotes) t[v.value] = (t[v.value] ?? 0) + 1
+          setTally(t)
+          if (memberId) {
+            const mine = hotelVotes.find(v => v.member_id === memberId)
+            if (mine) setMyVote(mine.value)
+          }
+        }
+      } catch { /* fall through — shows empty state */ }
       setLoading(false)
     }
 
-    if (memberId !== undefined) load()
-  }, [tripId, memberId])
+    load()
+
+    // Realtime: re-fetch votes when any hotel vote is cast
+    const channel = supabase
+      .channel(`hotel-votes-${tripId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'votes', filter: `trip_id=eq.${tripId}` },
+        async () => {
+          const res = await fetch(`/api/trip/${tripId}/votes?voteType=hotel`)
+          if (!res.ok) return
+          const hotelVotes: { value: string; member_id: string }[] = await res.json()
+          const t: Record<string, number> = {}
+          for (const v of hotelVotes) t[v.value] = (t[v.value] ?? 0) + 1
+          setTally(t)
+          if (memberId) {
+            const mine = hotelVotes.find(v => v.member_id === memberId)
+            if (mine) setMyVote(mine.value)
+          }
+        })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [tripId])
 
   async function castVote(hotelName: string) {
-    if (!memberId || myVote) return
-
-    await supabase.from('votes').upsert({
-      trip_id: tripId,
-      member_id: memberId,
-      vote_type: 'hotel',
-      value: hotelName,
-    }, { onConflict: 'trip_id,member_id,vote_type' })
-
-    setMyVote(hotelName)
-    setTally(prev => ({ ...prev, [hotelName]: (prev[hotelName] ?? 0) + 1 }))
+    const memberId = localStorage.getItem(`ts_member_${tripId}`)
+    if (!memberId || myVote || voting) return
+    setVoting(true)
+    setVoteError(null)
+    try {
+      // Use the vote API route — enforces deadline server-side
+      const res = await fetch('/api/trip/vote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tripId, memberId, voteType: 'hotel', value: hotelName }),
+      })
+      if (res.status === 403) {
+        const { error } = await res.json().catch(() => ({ error: 'Voting closed' }))
+        setVoteError(error)
+        setVoting(false)
+        return
+      }
+      if (!res.ok) {
+        setVoteError('Something went wrong — try again.')
+        setVoting(false)
+        return
+      }
+      setMyVote(hotelName)
+      setTally(prev => ({ ...prev, [hotelName]: (prev[hotelName] ?? 0) + 1 }))
+    } catch {
+      setVoteError('Network error — check your connection.')
+    }
+    setVoting(false)
   }
 
   if (loading) {
@@ -79,6 +115,18 @@ export default function HotelsPage({ params }: { params: Promise<{ tripId: strin
           <div className="text-3xl animate-pulse">🏨</div>
           <p className="text-sm" style={{ color: 'var(--muted)' }}>Loading hotels...</p>
         </div>
+      </div>
+    )
+  }
+
+  if (!hotels.length) {
+    return (
+      <div className="min-h-dvh flex flex-col items-center justify-center px-5 text-center safe-top safe-bottom">
+        <div className="text-4xl mb-4">🏨</div>
+        <h1 className="text-xl font-bold mb-2">Hotels not ready yet</h1>
+        <p className="text-sm" style={{ color: 'var(--muted)' }}>
+          Hotel options will appear here once the destination is confirmed.
+        </p>
       </div>
     )
   }
@@ -106,6 +154,11 @@ export default function HotelsPage({ params }: { params: Promise<{ tripId: strin
             )}
           </div>
         )}
+        {voteError && (
+          <div className="mt-2 px-3 py-2 rounded-xl text-xs font-semibold" style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+            🔒 {voteError}
+          </div>
+        )}
       </div>
 
       {/* Hotel cards */}
@@ -124,7 +177,7 @@ export default function HotelsPage({ params }: { params: Promise<{ tripId: strin
               }}
             >
               {/* Static map */}
-              {hotel.map_image_url && (
+              {hotel.map_image_url ? (
                 <img
                   src={hotel.map_image_url}
                   alt={`Map showing ${hotel.name} location`}
@@ -132,8 +185,7 @@ export default function HotelsPage({ params }: { params: Promise<{ tripId: strin
                   style={{ height: 160 }}
                   loading="lazy"
                 />
-              )}
-              {!hotel.map_image_url && (
+              ) : (
                 <div
                   className="w-full flex items-center justify-center text-2xl"
                   style={{ height: 100, background: 'var(--card-border)' }}
@@ -148,7 +200,7 @@ export default function HotelsPage({ params }: { params: Promise<{ tripId: strin
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="font-semibold text-base leading-tight">{hotel.name}</h3>
-                      {(hotel as Hotel & { recommended?: boolean }).recommended && (
+                      {hotel.recommended && (
                         <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}>
                           Recommended
                         </span>
@@ -167,7 +219,7 @@ export default function HotelsPage({ params }: { params: Promise<{ tripId: strin
                 {/* Highlights */}
                 <div className="flex flex-wrap gap-1.5 my-2.5">
                   {hotel.highlights.map((h, i) => (
-                    <span key={i} className="text-xs px-2 py-1 rounded-full" style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--foreground)' }}>
+                    <span key={i} className="text-xs px-2.5 py-1 rounded-full font-medium" style={{ background: 'var(--accent-muted)', color: 'var(--accent)', border: '1px solid var(--card-border)' }}>
                       {h}
                     </span>
                   ))}
@@ -186,16 +238,18 @@ export default function HotelsPage({ params }: { params: Promise<{ tripId: strin
                   </div>
                 )}
 
-                {/* External booking link */}
-                <a
-                  href={hotel.booking_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block text-center text-sm py-2 rounded-xl mb-2 font-medium transition-opacity hover:opacity-80"
-                  style={{ border: '1px solid var(--card-border)', color: 'var(--muted)' }}
-                >
-                  View on MakeMyTrip / Booking.com →
-                </a>
+                {/* External booking link — only if URL is present */}
+                {hotel.booking_url && (
+                  <a
+                    href={hotel.booking_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block text-center text-sm py-2 rounded-xl mb-2 font-medium transition-opacity hover:opacity-80"
+                    style={{ border: '1px solid var(--card-border)', color: 'var(--muted)' }}
+                  >
+                    View on MakeMyTrip / Booking.com →
+                  </a>
+                )}
               </div>
             </div>
           )
@@ -216,7 +270,8 @@ export default function HotelsPage({ params }: { params: Promise<{ tripId: strin
               <button
                 key={idx}
                 onClick={() => castVote(hotel.name)}
-                className="py-3 rounded-xl text-xs font-semibold text-center transition-all"
+                disabled={voting}
+                className="py-3 rounded-xl text-xs font-semibold text-center transition-all disabled:opacity-60"
                 style={{ background: 'var(--accent)', color: '#fff' }}
               >
                 {hotel.name.split(' ')[0]} {idx === 0 ? '🌿' : idx === 1 ? '🌟' : '🏄'}

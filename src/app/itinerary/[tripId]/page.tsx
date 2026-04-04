@@ -2,7 +2,6 @@
 
 import { useState, useEffect, use } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
 import { AVATAR_META } from '@/types'
 import type { ItineraryDay, ForYouCallout, AvatarType } from '@/types'
 
@@ -28,40 +27,29 @@ export default function ItineraryPage({ params }: { params: Promise<{ tripId: st
   const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set([1]))
 
   useEffect(() => {
-    const stored = localStorage.getItem(`ts_member_${tripId}`)
-    const memberId = urlMemberId ?? stored
+    const memberId = urlMemberId ?? localStorage.getItem(`ts_member_${tripId}`)
 
     async function load() {
-      const { data: trip } = await supabase
-        .from('trips')
-        .select('name, confirmed_destination, itinerary, status')
-        .eq('id', tripId)
-        .single()
+      try {
+        const res = await fetch(`/api/trip/${tripId}/dashboard-info`)
+        if (!res.ok) { setLoading(false); return }
+        const data = await res.json()
 
-      if (!trip) return
+        const trip = data.trip
+        if (!trip) { setLoading(false); return }
 
-      setTripName(trip.name)
-      setDestination(trip.confirmed_destination ?? '')
-      setItinerary(trip.itinerary ?? [])
+        setTripName(trip.name)
+        setDestination(trip.confirmed_destination ?? '')
+        setItinerary(trip.itinerary ?? [])
 
-      if (memberId) {
-        const { data: member } = await supabase
-          .from('members')
-          .select('avatar')
-          .eq('id', memberId)
-          .single()
+        if (memberId) {
+          const me = (data.members ?? []).find((m: { id: string }) => m.id === memberId)
+          if (me?.avatar) setMyAvatar(me.avatar as AvatarType)
 
-        if (member?.avatar) setMyAvatar(member.avatar as AvatarType)
-
-        const { data: foryou } = await supabase
-          .from('for_you_callouts')
-          .select('*')
-          .eq('trip_id', tripId)
-          .eq('member_id', memberId)
-
-        if (foryou) setCallouts(foryou)
-      }
-
+          const myCallouts = (data.forYou ?? []).filter((f: { member_id: string }) => f.member_id === memberId)
+          setCallouts(myCallouts)
+        }
+      } catch { /* fall through — shows empty state */ }
       setLoading(false)
     }
     load()
@@ -92,7 +80,7 @@ export default function ItineraryPage({ params }: { params: Promise<{ tripId: st
         <div className="text-4xl mb-4">⏳</div>
         <h1 className="text-xl font-bold mb-2">Itinerary not ready yet</h1>
         <p className="text-sm" style={{ color: 'var(--muted)' }}>
-          The itinerary is being generated. Check back soon or we'll email you when it's ready.
+          The itinerary is being generated. Check back soon or we&apos;ll email you when it&apos;s ready.
         </p>
       </div>
     )

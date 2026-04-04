@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { INDIAN_DESTINATIONS, TRENDING_DESTINATIONS } from '@/types'
 
@@ -21,6 +21,7 @@ export default function HomePage() {
   const [destDropdownOpen, setDestDropdownOpen] = useState(false)
   const [memberEmails, setMemberEmails] = useState('')
   const [travelMonth, setTravelMonth] = useState('')
+  const [voteDeadline, setVoteDeadline] = useState('')
   const destSearchRef = useRef<HTMLInputElement>(null)
   const destDropdownRef = useRef<HTMLDivElement>(null)
 
@@ -37,8 +38,16 @@ export default function HomePage() {
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
   const canProceedIdentity = name.trim().length >= 1 && emailValid
+  const [today] = useState(() => new Date().toISOString().split('T')[0])
+  const [maxDate] = useState(() => {
+    const d = new Date(); d.setFullYear(d.getFullYear() + 1); return d.toISOString().split('T')[0]
+  })
+  const [minDeadline] = useState(() => {
+    const d = new Date(); d.setHours(d.getHours() + 1); return d.toISOString().slice(0, 16)
+  })
+  const voteDeadlineValid = voteDeadline.length > 0 && voteDeadline > minDeadline
   const canProceedDestination = (destMode === 'group_vote'
-    ? selectedDests.length >= 2
+    ? selectedDests.length >= 2 && voteDeadlineValid
     : selectedDests.length >= 1) && travelMonth.length > 0
 
   const filteredDests = destSearch.length >= 1
@@ -68,7 +77,11 @@ export default function HomePage() {
       return found ? { name: found.name, emoji: (found as { emoji?: string }).emoji ?? '📍' } : { name }
     })
 
-    const rawEmails = memberEmails.split(/[\n,]+/).map(e => e.trim()).filter(e => e.includes('@'))
+    const rawEmails = memberEmails.split(/[\n,]+/)
+      .map(e => e.trim().toLowerCase())
+      .filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) && e !== email.toLowerCase())
+      .filter((e, i, arr) => arr.indexOf(e) === i) // dedupe
+      .slice(0, 20)
 
     const res = await fetch('/api/trip/create', {
       method: 'POST',
@@ -80,6 +93,7 @@ export default function HomePage() {
         memberEmails: rawEmails,
         destinationMode: destMode,
         travelMonth: travelMonth || null,
+        voteDeadline: voteDeadline || null,
       }),
     })
 
@@ -94,7 +108,7 @@ export default function HomePage() {
     setTripName(data.tripName)
     setTripCode(data.travelCode)
     if (data.organizerId) {
-      localStorage.setItem(`ts_member_${data.tripId}`, data.organizerId)
+      try { localStorage.setItem(`ts_member_${data.tripId}`, data.organizerId) } catch { /* quota/private mode */ }
     }
     setStep('share')
     setCreating(false)
@@ -138,55 +152,56 @@ export default function HomePage() {
     return (
       <div className="min-h-dvh flex flex-col px-5 safe-top" style={{ background: 'var(--background)' }}>
         <div className="flex-1 overflow-y-auto">
-          {/* Hero — full-bleed gradient banner like Booking.com */}
-          <div className="-mx-5 px-5 pt-10 pb-7 mb-5 relative overflow-hidden" style={{ background: 'linear-gradient(145deg, #1e1b4b 0%, #0f172a 40%, #0c1a2e 70%, #0f2027 100%)' }}>
-            {/* Ambient glow orbs */}
-            <div className="absolute top-0 left-1/4 w-48 h-48 rounded-full blur-3xl opacity-20 pointer-events-none" style={{ background: '#6366f1' }} />
-            <div className="absolute bottom-0 right-1/4 w-40 h-40 rounded-full blur-3xl opacity-15 pointer-events-none" style={{ background: '#06b6d4' }} />
+          {/* Hero */}
+          <div className="-mx-5 px-5 pt-10 pb-8 mb-6 relative overflow-hidden" style={{ background: 'var(--hero-gradient)' }}>
+            {/* Glow orbs */}
+            <div className="absolute top-0 left-1/3 w-56 h-56 rounded-full blur-3xl opacity-30 pointer-events-none" style={{ background: '#a78bfa' }} />
+            <div className="absolute bottom-0 right-1/4 w-44 h-44 rounded-full blur-3xl opacity-25 pointer-events-none" style={{ background: '#f472b6' }} />
+            <div className="absolute top-1/2 right-0 w-36 h-36 rounded-full blur-3xl opacity-20 pointer-events-none" style={{ background: '#f97316' }} />
 
             {/* Floating destination chips */}
-            <div className="flex flex-wrap justify-center gap-2 mb-5">
-              {['🏖 Goa', '🏔 Manali', '🌿 Coorg', '🏙 Jaipur', '🗻 Kedarkantha', '🌊 Pondicherry'].map(d => (
-                <span key={d} className="px-3 py-1 rounded-full text-xs font-medium" style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.7)' }}>{d}</span>
+            <div className="flex flex-wrap justify-center gap-2 mb-6">
+              {['🏖 Goa', '🏔 Manali', '🌿 Coorg', '🏙 Jaipur', '🗻 Kedarkantha', '🌊 Pondi'].map(d => (
+                <span key={d} className="px-3 py-1.5 rounded-full text-xs font-semibold" style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', backdropFilter: 'blur(4px)' }}>{d}</span>
               ))}
             </div>
 
             <div className="text-center relative">
-              <div className="text-4xl mb-2">🌊</div>
-              <h1 className="text-3xl font-black tracking-tight text-white">Toh Chale</h1>
-              <p className="text-base font-semibold mt-2 text-white">Your squad. One link. Full trip planned.</p>
-              <p className="text-sm mt-1.5 leading-relaxed" style={{ color: 'rgba(255,255,255,0.55)' }}>
+              <div className="text-5xl mb-3">🌊</div>
+              <h1 className="text-4xl font-black tracking-tight text-white leading-none">Toh Chale</h1>
+              <p className="text-base font-semibold mt-3 text-white opacity-90">Your squad. One link. Full trip planned.</p>
+              <p className="text-sm mt-2 leading-relaxed" style={{ color: 'rgba(255,255,255,0.65)' }}>
                 Votes, roles & AI itinerary — no app, no chaos.
               </p>
+              {/* India-centric badge */}
+              <div className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 rounded-full text-xs font-semibold" style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)', color: '#fff', backdropFilter: 'blur(6px)' }}>
+                <span>🇮🇳</span>
+                <span>Made for India squads · rest of the world can wait 😅</span>
+              </div>
             </div>
           </div>
 
           {/* How it works */}
-          <div className="mb-4">
-            <p className="text-xs font-bold tracking-widest mb-3" style={{ color: 'var(--muted)' }}>HOW IT WORKS</p>
-            <div className="space-y-2">
+          <div className="mb-6">
+            <p className="text-xs font-bold tracking-widest mb-4" style={{ color: 'var(--muted)' }}>HOW IT WORKS</p>
+            <div className="grid grid-cols-2 gap-3">
               {[
-                { icon: '✉️', title: 'Invite your squad', sub: 'Send a link — they join in 2 taps, no sign-up' },
-                { icon: '🗳️', title: 'Vote on the destination', sub: 'Everyone picks. Majority decides. Done.' },
-                { icon: '🎭', title: 'Claim your squad role', sub: 'Foodie, Navigator, Budgeteer & more' },
-                { icon: '✨', title: 'AI builds the itinerary', sub: 'Day-by-day plan built around your squad' },
-              ].map(({ icon, title, sub }, i) => (
-                <div key={title} className="flex items-center gap-3 rounded-2xl px-4 py-3.5" style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}>
-                  <div className="flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center text-base font-black" style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.25), rgba(6,182,212,0.25))', border: '1px solid rgba(99,102,241,0.3)' }}>
-                    {icon}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-bold">{title}</div>
-                    <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{sub}</div>
-                  </div>
-                  <div className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-black" style={{ background: 'rgba(99,102,241,0.2)', color: '#a5b4fc' }}>{i + 1}</div>
+                { icon: '✉️', title: 'Invite your squad', sub: 'Join in 2 taps — zero sign-up', bg: 'rgba(124,58,237,0.08)', accent: '#7c3aed' },
+                { icon: '🗳️', title: 'Vote on destination', sub: 'Everyone picks. Majority wins.', bg: 'rgba(219,39,119,0.08)', accent: '#db2777' },
+                { icon: '🎭', title: 'Claim your role', sub: 'Foodie, Navigator, Budgeteer…', bg: 'rgba(249,115,22,0.08)', accent: '#f97316' },
+                { icon: '✨', title: 'AI itinerary', sub: 'Day-by-day plan, built for you', bg: 'rgba(5,150,105,0.08)', accent: '#059669' },
+              ].map(({ icon, title, sub, bg, accent }) => (
+                <div key={title} className="p-4 rounded-2xl flex flex-col gap-2" style={{ background: bg, border: `1.5px solid ${accent}22` }}>
+                  <div className="text-2xl">{icon}</div>
+                  <div className="font-bold text-sm leading-tight">{title}</div>
+                  <div className="text-xs leading-relaxed" style={{ color: 'var(--muted)' }}>{sub}</div>
                 </div>
               ))}
             </div>
           </div>
 
           {/* Form */}
-          <p className="text-xs font-bold tracking-widest mb-3" style={{ color: 'var(--muted)' }}>LET&apos;S START</p>
+          <p className="text-xs font-bold tracking-widest mb-3" style={{ color: 'var(--muted)' }}>LET&apos;S GO 🚀</p>
           <div className="space-y-3 pb-4">
             <div>
               <label className="block text-xs font-semibold mb-1.5 tracking-wide" style={{ color: 'var(--muted)' }}>YOUR NAME</label>
@@ -196,7 +211,7 @@ export default function HomePage() {
                 value={name}
                 onChange={e => setName(e.target.value)}
                 className="w-full px-4 py-3.5 rounded-2xl text-sm outline-none transition-all"
-                style={{ background: 'var(--card)', border: name ? '1px solid #6366f1' : '1px solid var(--card-border)' }}
+                style={{ background: 'var(--card)', border: name ? '2px solid var(--accent)' : '1.5px solid var(--input-border)' }}
               />
             </div>
             <div>
@@ -207,7 +222,7 @@ export default function HomePage() {
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 className="w-full px-4 py-3.5 rounded-2xl text-sm outline-none transition-all"
-                style={{ background: 'var(--card)', border: email && !emailValid ? '1px solid #ef4444' : email ? '1px solid #6366f1' : '1px solid var(--card-border)' }}
+                style={{ background: 'var(--card)', border: email && !emailValid ? '2px solid #ef4444' : email ? '2px solid var(--accent)' : '1.5px solid var(--input-border)' }}
               />
               {email && !emailValid && (
                 <p className="text-xs mt-1" style={{ color: '#ef4444' }}>Enter a valid email address</p>
@@ -223,9 +238,9 @@ export default function HomePage() {
             disabled={!canProceedIdentity}
             className="w-full py-4 rounded-2xl font-black text-base disabled:opacity-30 transition-all"
             style={{
-              background: canProceedIdentity ? 'linear-gradient(135deg, #6366f1, #06b6d4)' : 'var(--card)',
+              background: canProceedIdentity ? 'linear-gradient(135deg, #7c3aed, #db2777)' : 'var(--input-border)',
               color: '#fff',
-              boxShadow: canProceedIdentity ? '0 0 24px rgba(99,102,241,0.4)' : 'none',
+              boxShadow: canProceedIdentity ? '0 4px 20px rgba(124,58,237,0.4)' : 'none',
             }}
           >
             Let&apos;s go →
@@ -249,10 +264,10 @@ export default function HomePage() {
         <div className="flex-1 space-y-3">
           <button
             onClick={() => setStep('destination')}
-            className="w-full p-5 rounded-2xl text-left flex items-start gap-4"
-            style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
+            className="w-full p-5 rounded-2xl text-left flex items-start gap-4 card-elevated"
+            style={{ background: 'var(--card)', border: '1.5px solid var(--card-border)' }}
           >
-            <span className="text-3xl">🗺</span>
+            <span className="text-3xl w-12 h-12 flex items-center justify-center rounded-2xl flex-shrink-0" style={{ background: 'rgba(124,58,237,0.1)' }}>🗺</span>
             <div>
               <div className="font-bold text-base">Plan a new trip</div>
               <div className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>
@@ -263,10 +278,10 @@ export default function HomePage() {
 
           <button
             onClick={() => setStep('join_code')}
-            className="w-full p-5 rounded-2xl text-left flex items-start gap-4"
-            style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
+            className="w-full p-5 rounded-2xl text-left flex items-start gap-4 card-elevated"
+            style={{ background: 'var(--card)', border: '1.5px solid var(--card-border)' }}
           >
-            <span className="text-3xl">🎟</span>
+            <span className="text-3xl w-12 h-12 flex items-center justify-center rounded-2xl flex-shrink-0" style={{ background: 'rgba(219,39,119,0.1)' }}>🎟</span>
             <div>
               <div className="font-bold text-base">Join with a travel code</div>
               <div className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>
@@ -295,7 +310,7 @@ export default function HomePage() {
             value={travelCode}
             onChange={e => { setTravelCode(e.target.value.toUpperCase().slice(0, 6)); setCodeError('') }}
             className="w-full px-4 py-4 rounded-2xl text-2xl font-mono font-bold text-center tracking-widest outline-none"
-            style={{ background: 'var(--card)', border: `1px solid ${codeError ? '#ef4444' : 'var(--card-border)'}` }}
+            style={{ background: 'var(--card)', border: `2px solid ${codeError ? '#ef4444' : 'var(--input-border)'}`, color: 'var(--foreground)' }}
             maxLength={6}
             autoCapitalize="characters"
           />
@@ -317,8 +332,6 @@ export default function HomePage() {
   }
 
   if (step === 'destination') {
-    const today = new Date().toISOString().split('T')[0]
-    const maxDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
     return (
       <div className="min-h-dvh flex flex-col" style={{ background: 'var(--background)' }}>
@@ -400,7 +413,7 @@ export default function HomePage() {
                 className="w-full px-4 py-3.5 rounded-2xl text-sm outline-none"
                 style={{
                   background: 'var(--card)',
-                  border: `1.5px solid ${destDropdownOpen ? 'var(--accent)' : 'var(--card-border)'}`,
+                  border: `1.5px solid ${destDropdownOpen ? 'var(--accent)' : 'var(--input-border)'}`,
                   color: 'var(--foreground)',
                 }}
               />
@@ -436,7 +449,7 @@ export default function HomePage() {
                           onMouseDown={() => { toggleDest(d.name); setDestSearch(''); setDestDropdownOpen(false) }}
                           className="w-full px-4 py-3 text-left text-sm flex items-center justify-between"
                           style={{
-                            background: selected ? 'rgba(99,102,241,0.15)' : 'transparent',
+                            background: selected ? 'rgba(124,58,237,0.12)' : 'transparent',
                             borderBottom: '1px solid var(--card-border)',
                           }}
                         >
@@ -472,13 +485,13 @@ export default function HomePage() {
                     <div
                       key={d}
                       className="flex items-center justify-between py-2 px-3 rounded-xl"
-                      style={{ background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.25)' }}
+                      style={{ background: 'rgba(124,58,237,0.08)', border: '1.5px solid rgba(124,58,237,0.2)' }}
                     >
                       <span className="text-sm font-medium">
                         {dest?.emoji ?? '📍'} {d}
                         {destMode === 'group_vote' && (
                           <span className="ml-2 text-xs px-1.5 py-0.5 rounded-full"
-                            style={{ background: 'rgba(99,102,241,0.2)', color: 'var(--accent)' }}>
+                            style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}>
                             Option {i + 1}
                           </span>
                         )}
@@ -505,12 +518,12 @@ export default function HomePage() {
               value={travelMonth}
               min={new Date().toISOString().slice(0, 7)}
               onChange={e => setTravelMonth(e.target.value)}
-              className="w-full px-3 py-3 rounded-xl text-sm outline-none appearance-none"
+              className="w-full px-4 py-3.5 rounded-2xl text-sm outline-none"
               style={{
                 background: 'var(--card)',
-                border: `1.5px solid ${travelMonth ? 'var(--accent)' : 'var(--card-border)'}`,
-                color: travelMonth ? 'var(--foreground)' : 'var(--muted)',
-                colorScheme: 'dark',
+                border: travelMonth ? '2px solid var(--accent)' : '1.5px solid var(--input-border)',
+                color: 'var(--foreground)',
+                colorScheme: 'light',
               }}
             />
             {travelMonth && (
@@ -520,23 +533,81 @@ export default function HomePage() {
             )}
           </div>
 
+          {/* Vote deadline — mandatory for group vote */}
+          {destMode === 'group_vote' && (
+            <div>
+              <div className="flex items-center justify-between mb-2.5">
+                <p className="text-xs font-semibold" style={{ color: 'var(--muted)' }}>
+                  VOTING CLOSES BY <span style={{ color: '#db2777' }}>*</span>
+                </p>
+              </div>
+              <div
+                className="p-4 rounded-2xl mb-3"
+                style={{ background: 'rgba(219,39,119,0.06)', border: '1.5px solid rgba(219,39,119,0.2)' }}
+              >
+                <p className="text-xs font-semibold mb-1" style={{ color: '#db2777' }}>⏳ Why set a deadline?</p>
+                <p className="text-xs leading-relaxed" style={{ color: 'var(--muted)' }}>
+                  Someone in every squad drags their feet. A deadline auto-locks the vote so the trip can actually happen 😄
+                </p>
+              </div>
+              <input
+                type="datetime-local"
+                value={voteDeadline}
+                min={minDeadline}
+                onChange={e => setVoteDeadline(e.target.value)}
+                className="w-full px-4 py-3.5 rounded-2xl text-sm outline-none"
+                style={{
+                  background: 'var(--card)',
+                  border: voteDeadline ? '2px solid #db2777' : '1.5px solid var(--input-border)',
+                  color: 'var(--foreground)',
+                  colorScheme: 'light',
+                }}
+              />
+              {voteDeadline && !voteDeadlineValid && (
+                <p className="text-xs mt-1.5" style={{ color: '#ef4444' }}>
+                  ⚠️ Deadline must be at least 1 hour from now
+                </p>
+              )}
+              {voteDeadline && voteDeadlineValid && (
+                <p className="text-xs mt-1.5" style={{ color: '#db2777' }}>
+                  🔒 Vote locks at {new Date(voteDeadline).toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Squad emails */}
           <div>
-            <p className="text-xs font-semibold mb-2.5" style={{ color: 'var(--muted)' }}>INVITE SQUAD</p>
-            <textarea
-              value={memberEmails}
-              onChange={e => setMemberEmails(e.target.value)}
-              placeholder={'rahul@gmail.com\npriya@gmail.com\nkaran@gmail.com'}
-              rows={4}
-              className="w-full px-4 py-3.5 rounded-2xl text-sm outline-none resize-none"
-              style={{
-                background: 'var(--card)',
-                border: '1.5px solid var(--card-border)',
-                color: 'var(--foreground)',
-                lineHeight: 1.7,
-              }}
-            />
-            <p className="text-xs mt-1.5" style={{ color: 'var(--muted)' }}>One email per line — they'll get an invite with a direct link</p>
+            {(() => {
+              const emailCount = memberEmails.split(/[\n,]+/).map(e => e.trim()).filter(e => e.includes('@')).length
+              const atLimit = emailCount >= 20
+              return (
+                <>
+                  <div className="flex items-center justify-between mb-2.5">
+                    <p className="text-xs font-semibold" style={{ color: 'var(--muted)' }}>INVITE SQUAD</p>
+                    <p className="text-xs font-semibold" style={{ color: atLimit ? '#ef4444' : 'var(--muted)' }}>
+                      {emailCount}/20
+                    </p>
+                  </div>
+                  <textarea
+                    value={memberEmails}
+                    onChange={e => setMemberEmails(e.target.value)}
+                    placeholder={'rahul@gmail.com\npriya@gmail.com\nkaran@gmail.com'}
+                    rows={4}
+                    className="w-full px-4 py-3.5 rounded-2xl text-sm outline-none resize-none"
+                    style={{
+                      background: 'var(--card)',
+                      border: `1.5px solid ${atLimit ? '#ef4444' : 'var(--input-border)'}`,
+                      color: 'var(--foreground)',
+                      lineHeight: 1.7,
+                    }}
+                  />
+                  <p className="text-xs mt-1.5" style={{ color: atLimit ? '#ef4444' : 'var(--muted)' }}>
+                    {atLimit ? 'Max 20 people per trip reached' : 'One email per line · max 20 people'}
+                  </p>
+                </>
+              )
+            })()}
           </div>
         </div>
 
@@ -549,8 +620,8 @@ export default function HomePage() {
           <button
             onClick={createTrip}
             disabled={!canProceedDestination || creating}
-            className="w-full py-4 rounded-2xl font-bold text-base disabled:opacity-40 transition-opacity"
-            style={{ background: 'var(--accent)', color: '#fff' }}
+            className="w-full py-4 rounded-2xl font-bold text-base disabled:opacity-40 transition-all"
+            style={{ background: canProceedDestination ? 'linear-gradient(135deg, #7c3aed, #db2777)' : 'var(--input-border)', color: '#fff', boxShadow: canProceedDestination ? '0 4px 20px rgba(124,58,237,0.35)' : 'none' }}
           >
             {creating ? '⏳ Creating trip...' : 'Create Trip →'}
           </button>
@@ -606,7 +677,7 @@ export default function HomePage() {
               }
             }}
             className="w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-2"
-            style={{ background: 'linear-gradient(135deg, #6366f1, #06b6d4)', color: '#fff', boxShadow: '0 0 20px rgba(99,102,241,0.35)' }}
+            style={{ background: 'linear-gradient(135deg, #7c3aed, #db2777)', color: '#fff', boxShadow: '0 4px 20px rgba(124,58,237,0.4)' }}
           >
             <span>✉️</span> Share invite link
           </button>

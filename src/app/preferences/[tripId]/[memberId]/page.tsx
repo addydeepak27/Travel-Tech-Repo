@@ -59,8 +59,10 @@ export default function PreferencesPage({
   const [availableDates, setAvailableDates] = useState<string[]>([])
   const [specialRequests, setSpecialRequests] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState(false)
   const [done, setDone] = useState(false)
   const [travelMonth, setTravelMonth] = useState<string | null>(null)
+  const [monthError, setMonthError] = useState(false)
 
   // Fetch trip travel month
   useEffect(() => {
@@ -68,9 +70,13 @@ export default function PreferencesPage({
       .then(r => r.json())
       .then(d => {
         const dep = d?.trip?.departure_date
-        if (dep) setTravelMonth(dep.slice(0, 7)) // YYYY-MM
+        if (dep) {
+          setTravelMonth(dep.slice(0, 7)) // YYYY-MM
+        } else {
+          setMonthError(true) // no departure_date set — skip date step gracefully
+        }
       })
-      .catch(() => {})
+      .catch(() => setMonthError(true))
   }, [tripId])
 
   // Total steps: QUESTIONS + dates + special_requests
@@ -112,45 +118,70 @@ export default function PreferencesPage({
   async function handleSubmit(skipSpecial = false) {
     if (submitting) return
     setSubmitting(true)
+    setSubmitError(false)
 
     const specialRequestsValue = skipSpecial ? null : specialRequests || null
     const storedSpecial = availableDates.length > 0
       ? JSON.stringify({ available_dates: availableDates, notes: specialRequestsValue })
       : specialRequestsValue
 
-    await fetch('/api/member/preferences', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        tripId,
-        memberId,
-        budget_tier: answers.budget_tier,
-        pace_vote: answers.pace_vote,
-        activity_pref: answers.activity_pref,
-        trip_priority: answers.trip_priority,
-        special_requests: storedSpecial,
-      }),
-    })
-
-    setDone(true)
-    setSubmitting(false)
+    try {
+      const res = await fetch('/api/member/preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tripId,
+          memberId,
+          budget_tier: answers.budget_tier,
+          pace_vote: answers.pace_vote,
+          activity_pref: answers.activity_pref,
+          trip_priority: answers.trip_priority,
+          special_requests: storedSpecial,
+        }),
+      })
+      if (!res.ok) throw new Error('submit failed')
+      setDone(true)
+    } catch {
+      setSubmitError(true)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   if (done) {
     return (
       <div className="min-h-dvh flex flex-col items-center justify-center px-5 text-center safe-top safe-bottom">
         <div className="text-5xl mb-4">🎉</div>
-        <h1 className="text-2xl font-bold mb-2">You're all set!</h1>
+        <h1 className="text-2xl font-bold mb-2">You&apos;re all set!</h1>
         <p className="text-sm mb-6" style={{ color: 'var(--muted)' }}>
-          Your preferences have been added to the group. We'll email you as the plan comes together.
+          Your preferences have been added to the group. We&apos;ll email you as the plan comes together.
         </p>
         <button
           onClick={() => router.push(`/trip/${tripId}`)}
           className="px-6 py-3 rounded-2xl font-semibold text-sm"
-          style={{ background: 'var(--accent)', color: '#fff' }}
+          style={{ background: 'linear-gradient(135deg, #7c3aed, #db2777)', color: '#fff', boxShadow: '0 4px 16px rgba(124,58,237,0.3)' }}
         >
           View Trip Dashboard →
         </button>
+      </div>
+    )
+  }
+
+  // Date availability step (Q5) — skip entirely if no travel month set
+  if (isDateStep && monthError) {
+    // Auto-advance to special requests step
+    return (
+      <div className="min-h-dvh flex items-center justify-center">
+        <div className="text-center px-5 space-y-3">
+          <div className="text-3xl">📅</div>
+          <p className="text-sm font-medium">No travel month set</p>
+          <p className="text-xs" style={{ color: 'var(--muted)' }}>Skipping date step — the organiser hasn&apos;t set a travel month yet.</p>
+          <button
+            onClick={() => setStep(s => s + 1)}
+            className="px-5 py-2.5 rounded-xl text-sm font-semibold"
+            style={{ background: 'var(--accent)', color: '#fff' }}
+          >Continue →</button>
+        </div>
       </div>
     )
   }
@@ -165,9 +196,9 @@ export default function PreferencesPage({
       <div className="min-h-dvh flex flex-col px-5 safe-top safe-bottom" style={{ background: 'var(--background)' }}>
         <div className="pt-8 pb-4">
           <div className="h-1.5 rounded-full mb-6" style={{ background: 'var(--card-border)' }}>
-            <div className="h-1.5 rounded-full transition-all" style={{ width: `${progress}%`, background: 'var(--accent)' }} />
+            <div className="h-1.5 rounded-full transition-all" style={{ width: `${progress}%`, background: 'linear-gradient(90deg, #7c3aed, #db2777)' }} />
           </div>
-          <p className="text-xs font-medium mb-1" style={{ color: 'var(--accent)' }}>Q5 OF {TOTAL_STEPS}</p>
+          <p className="gradient-text text-xs font-medium mb-1">Q5 OF {TOTAL_STEPS}</p>
           <h2 className="text-xl font-bold leading-snug">Which dates work for you?</h2>
           <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>
             Pick your available dates in {monthLabel}
@@ -185,10 +216,11 @@ export default function PreferencesPage({
                   onClick={() => toggleDate(date)}
                   className="flex flex-col items-center px-3 py-2 rounded-xl text-xs font-medium transition-all"
                   style={{
-                    background: selected ? 'var(--accent)' : 'var(--card)',
-                    border: `1.5px solid ${selected ? 'var(--accent)' : isWeekend ? 'var(--accent-muted, var(--card-border))' : 'var(--card-border)'}`,
+                    background: selected ? 'var(--accent)' : isWeekend ? 'var(--accent-muted)' : 'var(--card)',
+                    border: `1.5px solid ${selected ? 'var(--accent)' : isWeekend ? 'var(--accent)' : 'var(--input-border)'}`,
                     color: selected ? '#fff' : isWeekend ? 'var(--accent)' : 'var(--foreground)',
                     minWidth: '52px',
+                    boxShadow: selected ? '0 2px 8px rgba(37,99,235,0.3)' : 'none',
                   }}
                 >
                   <span style={{ fontSize: '10px', opacity: 0.7 }}>{dayName}</span>
@@ -198,8 +230,13 @@ export default function PreferencesPage({
             })}
           </div>
         ) : (
-          <div className="py-6 text-center text-sm" style={{ color: 'var(--muted)' }}>
-            Loading dates…
+          <div className="py-6 text-center space-y-3">
+            <p className="text-sm" style={{ color: 'var(--muted)' }}>Loading dates…</p>
+            <button
+              onClick={() => setStep(s => s + 1)}
+              className="text-xs underline"
+              style={{ color: 'var(--muted)', minHeight: 'unset' }}
+            >Skip this step</button>
           </div>
         )}
 
@@ -214,7 +251,7 @@ export default function PreferencesPage({
             onClick={() => setStep(s => s + 1)}
             disabled={availableDates.length === 0}
             className="w-full py-4 rounded-2xl font-bold text-base disabled:opacity-40"
-            style={{ background: 'var(--accent)', color: '#fff' }}
+            style={{ background: 'linear-gradient(135deg, #7c3aed, #db2777)', color: '#fff', boxShadow: '0 4px 16px rgba(124,58,237,0.3)' }}
           >
             Next →
           </button>
@@ -244,9 +281,9 @@ export default function PreferencesPage({
       <div className="min-h-dvh flex flex-col px-5 safe-top safe-bottom" style={{ background: 'var(--background)' }}>
         <div className="pt-8 pb-6">
           <div className="h-1.5 rounded-full mb-6" style={{ background: 'var(--card-border)' }}>
-            <div className="h-1.5 rounded-full transition-all" style={{ width: `${progress}%`, background: 'var(--accent)' }} />
+            <div className="h-1.5 rounded-full transition-all" style={{ width: `${progress}%`, background: 'linear-gradient(90deg, #7c3aed, #db2777)' }} />
           </div>
-          <p className="text-xs font-medium mb-1" style={{ color: 'var(--accent)' }}>Q6 OF {TOTAL_STEPS} — OPTIONAL</p>
+          <p className="gradient-text text-xs font-medium mb-1">Q6 OF {TOTAL_STEPS} — OPTIONAL</p>
           <h2 className="text-xl font-bold leading-snug">Anything else we should know?</h2>
           <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>
             e.g. I&apos;m vegetarian, I don&apos;t do heights, I want a beach day...
@@ -260,14 +297,19 @@ export default function PreferencesPage({
           className="w-full p-4 rounded-2xl text-sm resize-none outline-none"
           style={{ background: 'var(--card)', border: '1px solid var(--card-border)', color: 'var(--foreground)' }}
         />
+        {submitError && (
+          <p className="mt-2 text-xs font-medium" style={{ color: '#ef4444' }}>
+            Couldn&apos;t save — check your connection and try again.
+          </p>
+        )}
         <div className="mt-4 space-y-2">
           <button
             onClick={() => handleSubmit(false)}
             disabled={submitting}
             className="w-full py-4 rounded-2xl font-bold text-base disabled:opacity-60"
-            style={{ background: 'var(--accent)', color: '#fff' }}
+            style={{ background: 'linear-gradient(135deg, #7c3aed, #db2777)', color: '#fff', boxShadow: '0 4px 16px rgba(124,58,237,0.3)' }}
           >
-            {submitting ? '⏳' : 'Submit →'}
+            {submitting ? '⏳' : submitError ? 'Try Again →' : 'Submit →'}
           </button>
           <button
             onClick={() => handleSubmit(true)}
@@ -295,9 +337,9 @@ export default function PreferencesPage({
     <div className="min-h-dvh flex flex-col px-5 safe-top safe-bottom" style={{ background: 'var(--background)' }}>
       <div className="pt-8 pb-6">
         <div className="h-1.5 rounded-full mb-6" style={{ background: 'var(--card-border)' }}>
-          <div className="h-1.5 rounded-full transition-all" style={{ width: `${progress}%`, background: 'var(--accent)' }} />
+          <div className="h-1.5 rounded-full transition-all" style={{ width: `${progress}%`, background: 'linear-gradient(90deg, #7c3aed, #db2777)' }} />
         </div>
-        <p className="text-xs font-medium mb-1" style={{ color: 'var(--accent)' }}>Q{step + 1} OF {TOTAL_STEPS}</p>
+        <p className="gradient-text text-xs font-medium mb-1">Q{step + 1} OF {TOTAL_STEPS}</p>
         <h2 className="text-xl font-bold leading-snug">{q.q}</h2>
         <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>Tap to answer — no submit button needed</p>
       </div>
@@ -307,11 +349,12 @@ export default function PreferencesPage({
           <button
             key={opt.value + opt.label}
             onClick={() => handleAnswer(q.id, opt.value)}
-            className="flex items-center gap-4 p-4 rounded-2xl text-left transition-all"
-            style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
+            className="flex items-center gap-4 p-4 rounded-2xl text-left transition-all active:scale-95"
+            style={{ background: 'var(--card)', border: '1.5px solid var(--input-border)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
           >
-            <span className="text-2xl">{opt.emoji}</span>
-            <span className="font-medium text-sm">{opt.label}</span>
+            <span className="text-2xl flex-shrink-0">{opt.emoji}</span>
+            <span className="font-semibold text-sm flex-1">{opt.label}</span>
+            <span className="text-lg text-gray-300 flex-shrink-0">›</span>
           </button>
         ))}
       </div>

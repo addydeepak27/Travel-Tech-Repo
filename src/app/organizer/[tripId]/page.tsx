@@ -5,15 +5,92 @@ import { supabase } from '@/lib/supabase'
 import { AVATAR_META, BUDGET_TIER_META } from '@/types'
 import type { AvatarType, BudgetTier, Hotel, MissionTask, ItineraryDay } from '@/types'
 
+// ── Deadline display — owns its own timer so Date.now() is never called in render ──
+function DeadlineChip({ deadline }: { deadline: string }) {
+  const [info, setInfo] = useState<{ label: string; closed: boolean; urgent: boolean } | null>(null)
+
+  useEffect(() => {
+    function compute() {
+      const ms = new Date(deadline).getTime() - Date.now()
+      const closed = ms <= 0
+      const urgent = !closed && ms < 3_600_000
+      const totalMins = Math.floor(ms / 60000)
+      const h = Math.floor(totalMins / 60)
+      const d = Math.floor(h / 24)
+      const m = totalMins % 60
+      const label = closed ? 'Vote closed' : d > 0 ? `${d}d ${h % 24}h left` : h > 0 ? `${h}h ${m}m left` : `${m}m left`
+      setInfo({ label, closed, urgent })
+    }
+    compute()
+    const id = setInterval(compute, 60_000)
+    return () => clearInterval(id)
+  }, [deadline])
+
+  if (!info) return null
+  return (
+    <div className="flex items-center gap-1.5 mt-2">
+      <span className="text-xs">{info.closed ? '🔒' : info.urgent ? '🔴' : '⏳'}</span>
+      <span className="text-xs font-semibold" style={{ color: info.closed ? 'var(--muted)' : info.urgent ? '#ef4444' : '#db2777' }}>
+        {info.closed ? 'Vote closed' : `Poll closes in ${info.label}`}
+      </span>
+    </div>
+  )
+}
+
+function DeadlineBanner({ deadline }: { deadline: string }) {
+  const [info, setInfo] = useState<{ label: string; closed: boolean; urgent: boolean } | null>(null)
+
+  useEffect(() => {
+    function compute() {
+      const ms = new Date(deadline).getTime() - Date.now()
+      const closed = ms <= 0
+      const urgent = !closed && ms < 3_600_000
+      const totalMins = Math.floor(ms / 60000)
+      const h = Math.floor(totalMins / 60)
+      const d = Math.floor(h / 24)
+      const m = totalMins % 60
+      const label = closed ? 'Vote deadline passed' : d > 0 ? `${d}d ${h % 24}h left` : h > 0 ? `${h}h ${m}m left` : `${m}m left`
+      setInfo({ label, closed, urgent })
+    }
+    compute()
+    const id = setInterval(compute, 60_000)
+    return () => clearInterval(id)
+  }, [deadline])
+
+  if (!info) return null
+  return (
+    <div
+      className="flex items-center gap-3 p-4 rounded-2xl"
+      style={{
+        background: info.closed ? 'rgba(100,116,139,0.08)' : info.urgent ? 'rgba(239,68,68,0.08)' : 'rgba(219,39,119,0.08)',
+        border: `1.5px solid ${info.closed ? 'var(--card-border)' : info.urgent ? 'rgba(239,68,68,0.3)' : 'rgba(219,39,119,0.25)'}`,
+      }}
+    >
+      <span className="text-xl flex-shrink-0">{info.closed ? '🔒' : info.urgent ? '🔴' : '⏳'}</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-bold" style={{ color: info.closed ? 'var(--muted)' : info.urgent ? '#ef4444' : '#db2777' }}>
+          {info.label}
+        </p>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+          {new Date(deadline).toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+        </p>
+      </div>
+    </div>
+  )
+}
+
 interface TripMember {
   id: string
   phone: string
   name: string | null
+  email: string
   avatar: AvatarType | null
   avatar_suffix: string | null
   budget_tier: BudgetTier | null
   status: string
   points: number
+  brownie_points: number
+  joined_at: string | null
   opt_out: boolean
 }
 
@@ -31,29 +108,49 @@ interface TripData {
   group_budget_zone: { min: number; max: number } | null
   weighted_median_tier: BudgetTier | null
   gamification_enabled: boolean
+  vote_deadline: string | null
 }
 
 const STATUS_LABELS: Record<string, string> = {
   draft: 'Draft',
   inviting: 'Inviting',
-  avatar_collection: 'Collecting Avatars',
-  budget_collection: 'Collecting Budgets',
-  destination_vote: 'Destination Vote',
-  hotel_vote: 'Hotel Vote',
-  itinerary_preferences: 'Itinerary Prefs',
-  itinerary_vote: 'Itinerary Vote',
-  locked: 'Trip Locked',
+  avatar_collection: 'Picking roles',
+  budget_collection: 'Setting budgets',
+  destination_vote: 'Voting: destination',
+  hotel_vote: 'Voting: hotel',
+  itinerary_preferences: 'Filling preferences',
+  itinerary_vote: 'Voting: itinerary',
+  locked: 'Locked ✓',
   cancelled: 'Cancelled',
 }
 
 const MEMBER_STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  invited: { label: 'Invited', color: 'var(--muted)' },
-  consented: { label: 'Joined', color: 'var(--accent)' },
-  avatar_selected: { label: 'Role set', color: 'var(--accent)' },
-  budget_submitted: { label: 'Budget in', color: 'var(--success)' },
-  active: { label: 'Active', color: 'var(--success)' },
-  declined: { label: 'Declined', color: '#ef4444' },
-  dropped: { label: 'Dropped', color: '#ef4444' },
+  invited:          { label: 'Invited',    color: 'var(--muted)' },
+  consented:        { label: 'Joined',     color: 'var(--accent)' },
+  avatar_selected:  { label: 'Role set',   color: 'var(--accent)' },
+  budget_submitted: { label: 'Budget in',  color: 'var(--success)' },
+  active:           { label: 'Active',     color: 'var(--success)' },
+  declined:         { label: 'Declined',   color: '#ef4444' },
+  dropped:          { label: 'Dropped',    color: '#ef4444' },
+}
+
+// ── Section heading ───────────────────────────────────────────────────────────
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-xs font-semibold tracking-wide uppercase mb-2" style={{ color: 'var(--muted)' }}>
+      {children}
+    </p>
+  )
+}
+
+// ── Stat pill ─────────────────────────────────────────────────────────────────
+function StatPill({ value, label, color }: { value: number; label: string; color: string }) {
+  return (
+    <div className="flex-1 flex flex-col items-center py-3 rounded-2xl bg-white" style={{ border: '1px solid var(--card-border)' }}>
+      <span className="text-xl font-bold" style={{ color }}>{value}</span>
+      <span className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{label}</span>
+    </div>
+  )
 }
 
 export default function OrganizerDashboard({ params }: { params: Promise<{ tripId: string }> }) {
@@ -66,51 +163,43 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
   const [tips, setTips] = useState<{ title: string; tip: string }[]>([])
   const [budgetAlert, setBudgetAlert] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'monitor' | 'tasks' | 'squad' | 'plan'>('monitor')
-  const [organizerId, setOrganizerId] = useState<string | null>(null)
-  const [nudgingId, setNudgingId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'monitor' | 'tasks' | 'plan' | 'squad'>('monitor')
+  const [organizerId] = useState<string | null>(() =>
+    typeof window !== 'undefined' ? localStorage.getItem(`ts_member_${tripId}`) : null
+  )
+  const [nudgingIds, setNudgingIds] = useState<Set<string>>(new Set())
   const [tipsVisible, setTipsVisible] = useState(false)
   const [alertDismissed, setAlertDismissed] = useState(false)
 
   useEffect(() => {
-    const stored = localStorage.getItem(`ts_member_${tripId}`)
-    setOrganizerId(stored)
-  }, [tripId])
-
-  useEffect(() => {
-    if (organizerId === undefined) return
 
     async function load() {
-      const res = await fetch(`/api/trip/${tripId}/organizer-info`)
-      if (!res.ok) { setLoading(false); return }
-      const data = await res.json()
+      try {
+        const res = await fetch(`/api/trip/${tripId}/organizer-info`)
+        if (!res.ok) { setLoading(false); return }
+        const data = await res.json()
 
-      setTrip(data.trip)
-      setMembers(data.members ?? [])
-      setTasks(data.tasks ?? [])
-      setVotes(data.votes ?? [])
+        setTrip(data.trip)
+        setMembers(data.members ?? [])
+        setTasks(data.tasks ?? [])
+        setVotes(data.votes ?? [])
 
-      const membersData = data.members ?? []
-
-      // Detect budget tension (spread ≥ 2 tiers)
-      if (membersData) {
+        const membersData: TripMember[] = data.members ?? []
         const tierValues: Record<string, number> = { backpacker: 1, comfortable: 2, premium: 3, luxury: 4 }
-        const submitted = membersData.filter((m: TripMember) => m.budget_tier)
+        const submitted = membersData.filter(m => m.budget_tier)
         if (submitted.length >= 2) {
-          const vals = submitted.map((m: TripMember) => tierValues[m.budget_tier!] ?? 0)
+          const vals = submitted.map(m => tierValues[m.budget_tier!] ?? 0)
           const spread = Math.max(...vals) - Math.min(...vals)
           if (spread >= 2) {
-            setBudgetAlert(`Heads up: your group has a wide budget gap. ${submitted.filter((m: TripMember) => (tierValues[m.budget_tier!] ?? 0) <= 1).length} members may find the plan a stretch — consider a quick check-in.`)
+            setBudgetAlert(`Wide budget gap in the squad. ${submitted.filter(m => (tierValues[m.budget_tier!] ?? 0) <= 1).length} members may find the plan a stretch — consider a check-in.`)
           }
         }
-      }
-
+      } catch { /* fall through — trip state stays null, shows error screen */ }
       setLoading(false)
     }
 
     load()
 
-    // Real-time subscription
     const channel = supabase
       .channel(`organizer-${tripId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'members', filter: `trip_id=eq.${tripId}` }, () => load())
@@ -122,7 +211,6 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
     return () => { supabase.removeChannel(channel) }
   }, [tripId, organizerId])
 
-  // Load cost tips once budget zone is available
   useEffect(() => {
     if (!trip?.group_budget_zone || tips.length > 0) return
     async function loadTips() {
@@ -140,22 +228,22 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
   }, [trip?.group_budget_zone, tripId, tips.length])
 
   async function nudge(memberId: string) {
-    if (nudgingId || !organizerId) return
-    setNudgingId(memberId)
+    if (nudgingIds.has(memberId) || !organizerId) return
+    setNudgingIds(prev => new Set(prev).add(memberId))
     await fetch('/api/organizer/nudge', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tripId, memberId, organizerId }),
     })
-    setTimeout(() => setNudgingId(null), 2000)
+    setTimeout(() => setNudgingIds(prev => { const s = new Set(prev); s.delete(memberId); return s }), 2000)
   }
 
   if (loading) {
     return (
-      <div className="min-h-dvh flex items-center justify-center">
-        <div className="text-center space-y-3">
-          <div className="text-3xl animate-pulse">📋</div>
-          <p className="text-sm" style={{ color: 'var(--muted)' }}>Loading organiser view...</p>
+      <div className="min-h-dvh flex items-center justify-center" style={{ background: 'var(--background)' }}>
+        <div className="text-center space-y-2">
+          <div className="text-4xl animate-pulse">📋</div>
+          <p className="text-sm" style={{ color: 'var(--muted)' }}>Loading organiser view…</p>
         </div>
       </div>
     )
@@ -163,17 +251,37 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
 
   if (!trip) {
     return (
-      <div className="min-h-dvh flex items-center justify-center px-5 text-center">
+      <div className="min-h-dvh flex items-center justify-center px-5 text-center" style={{ background: 'var(--background)' }}>
         <p style={{ color: 'var(--muted)' }}>Trip not found.</p>
+      </div>
+    )
+  }
+
+  // Guard: only the actual organizer can view this page
+  if (organizerId && trip.organizer_id && organizerId !== trip.organizer_id) {
+    return (
+      <div className="min-h-dvh flex flex-col items-center justify-center px-5 text-center safe-top safe-bottom" style={{ background: 'var(--background)' }}>
+        <div className="text-4xl mb-3">🔒</div>
+        <h1 className="text-xl font-bold mb-1">Organiser only</h1>
+        <p className="text-sm" style={{ color: 'var(--muted)' }}>
+          This dashboard is only for the trip organiser.
+        </p>
       </div>
     )
   }
 
   const activeMembers = members.filter(m => ['consented', 'avatar_selected', 'budget_submitted', 'active'].includes(m.status))
   const nonResponders = members.filter(m => m.status === 'invited')
-  const avatarMap = new Map(members.filter(m => m.avatar).map(m => [m.avatar!, m]))
+  // Multiple members can pick the same avatar — group all by avatar key
+  const avatarClaimMap = new Map<AvatarType, TripMember[]>()
+  for (const m of members) {
+    if (!m.avatar) continue
+    const key = m.avatar as AvatarType
+    if (!avatarClaimMap.has(key)) avatarClaimMap.set(key, [])
+    avatarClaimMap.get(key)!.push(m)
+  }
+  const claimedCount = avatarClaimMap.size
 
-  // Vote tallies for current step
   const currentVoteType = trip.status === 'destination_vote' ? 'destination'
     : trip.status === 'hotel_vote' ? 'hotel'
     : trip.status === 'itinerary_vote' ? 'itinerary'
@@ -182,31 +290,30 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
   const voteTally: Record<string, number> = {}
   for (const v of currentVotes) { voteTally[v.value] = (voteTally[v.value] ?? 0) + 1 }
 
-  // Task stats — compare date strings to avoid timezone drift (deadlines are stored as DATE, not TIMESTAMP)
   const todayStr = new Date().toISOString().split('T')[0]
   const pendingTasks = tasks.filter(t => t.status === 'pending')
   const doneTasks = tasks.filter(t => t.status === 'done')
   const overdueTasks = tasks.filter(t => t.status === 'pending' && t.deadline < todayStr)
 
-  const tabs = [
-    { id: 'monitor' as const, icon: '👁', label: 'Monitor' },
-    { id: 'tasks' as const, icon: '✅', label: 'Tasks' },
-    { id: 'plan' as const, icon: '🗺', label: 'Plan' },
-    { id: 'squad' as const, icon: '👥', label: 'Squad' },
+  const tabs: { id: 'monitor' | 'tasks' | 'plan' | 'squad'; emoji: string; label: string }[] = [
+    { id: 'monitor', emoji: '👁', label: 'Monitor' },
+    { id: 'tasks',   emoji: '✅', label: 'Tasks' },
+    { id: 'plan',    emoji: '🗺', label: 'Plan' },
+    { id: 'squad',   emoji: '👥', label: 'Squad' },
   ]
+
+  const memberLabel = (m: TripMember) => m.name || m.email || m.phone || 'Member'
 
   return (
     <div className="min-h-dvh flex flex-col" style={{ background: 'var(--background)' }}>
-      {/* Header */}
-      <div className="safe-top px-5 pt-5 pb-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-bold leading-tight">{trip.name}</h1>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span
-                className="text-xs px-2 py-0.5 rounded-full font-medium"
-                style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}
-              >
+
+      {/* ── Header ── */}
+      <div className="px-5 pt-6 pb-4 bg-white" style={{ borderBottom: '1px solid var(--card-border)' }}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl font-bold leading-tight truncate" style={{ color: 'var(--foreground)' }}>{trip.name}</h1>
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+              <span className="text-xs px-2.5 py-1 rounded-full font-semibold" style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}>
                 {STATUS_LABELS[trip.status] ?? trip.status}
               </span>
               <span className="text-xs" style={{ color: 'var(--muted)' }}>
@@ -214,70 +321,88 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
               </span>
             </div>
           </div>
-          {trip.organizer_id && organizerId === trip.organizer_id && (
-            <span className="text-xs px-2 py-1 rounded-full" style={{ background: 'var(--card)', color: 'var(--muted)', border: '1px solid var(--card-border)' }}>
-              Organiser
-            </span>
-          )}
+          <div className="text-xs px-2.5 py-1 rounded-full font-medium flex-shrink-0" style={{ background: 'var(--card-border)', color: 'var(--muted)' }}>
+            Organiser
+          </div>
         </div>
+
+        {/* Progress bar */}
+        <div className="mt-3 h-1 rounded-full overflow-hidden" style={{ background: 'var(--card-border)' }}>
+          <div
+            className="h-full rounded-full transition-all"
+            style={{
+              width: `${Math.round((activeMembers.length / Math.max(members.length, 1)) * 100)}%`,
+              background: 'linear-gradient(90deg, #7c3aed, #db2777)',
+            }}
+          />
+        </div>
+
+        {/* Vote deadline inline chip */}
+        {trip.vote_deadline && <DeadlineChip deadline={trip.vote_deadline} />}
       </div>
 
-      {/* Tab content */}
-      <div className="flex-1 overflow-y-auto pb-24">
+      {/* ── Tab content ── */}
+      <div className="flex-1 overflow-y-auto" style={{ paddingBottom: 80 }}>
 
-        {/* ── MONITOR TAB ── */}
+        {/* MONITOR */}
         {activeTab === 'monitor' && (
-          <div className="px-5 space-y-4 pt-2">
+          <div className="px-5 pt-5 space-y-5">
+
+            {/* Vote deadline banner */}
+            {trip.vote_deadline && <DeadlineBanner deadline={trip.vote_deadline} />}
 
             {/* Budget alert */}
             {budgetAlert && !alertDismissed && (
-              <div
-                className="p-4 rounded-2xl"
-                style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)' }}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-start gap-2">
-                    <span>⚠️</span>
-                    <p className="text-xs leading-snug" style={{ color: '#d97706' }}>{budgetAlert}</p>
-                  </div>
-                  <button onClick={() => setAlertDismissed(true)} className="text-xs flex-shrink-0" style={{ color: 'var(--muted)', minHeight: 'auto', minWidth: 'auto' }}>✕</button>
-                </div>
+              <div className="flex items-start gap-3 p-4 rounded-2xl" style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.25)' }}>
+                <span className="text-lg flex-shrink-0">⚠️</span>
+                <p className="flex-1 text-xs leading-relaxed" style={{ color: '#92400e' }}>{budgetAlert}</p>
+                <button
+                  onClick={() => setAlertDismissed(true)}
+                  className="flex-shrink-0 text-xs"
+                  style={{ color: 'var(--muted)', minHeight: 'unset', minWidth: 'unset' }}
+                >✕</button>
               </div>
             )}
 
-            {/* Budget zone + tips */}
+            {/* Task summary pills */}
+            {tasks.length > 0 && (
+              <div className="flex gap-2">
+                <StatPill value={doneTasks.length}    label="Done"    color="var(--success)" />
+                <StatPill value={pendingTasks.length - overdueTasks.length} label="Pending" color="var(--accent)" />
+                <StatPill value={overdueTasks.length} label="Overdue" color="#ef4444" />
+              </div>
+            )}
+
+            {/* Budget zone */}
             {trip.group_budget_zone && (
-              <div
-                className="p-4 rounded-2xl"
-                style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
-              >
+              <div className="p-4 rounded-2xl bg-white" style={{ border: '1px solid var(--card-border)' }}>
                 <div className="flex items-center justify-between mb-1">
-                  <div className="text-xs font-medium" style={{ color: 'var(--accent)' }}>GROUP BUDGET ZONE</div>
+                  <span className="text-xs font-semibold tracking-wide uppercase" style={{ color: 'var(--accent)' }}>Group budget</span>
                   {tips.length > 0 && (
                     <button
                       onClick={() => setTipsVisible(v => !v)}
                       className="text-xs font-medium"
-                      style={{ color: 'var(--accent)', minHeight: 'auto', minWidth: 'auto' }}
+                      style={{ color: 'var(--accent)', minHeight: 'unset', minWidth: 'unset' }}
                     >
-                      {tipsVisible ? 'Hide tips' : '3 ways to save ↓'}
+                      {tipsVisible ? 'Hide tips ↑' : '3 ways to save ↓'}
                     </button>
                   )}
                 </div>
-                <div className="font-bold text-lg">
+                <p className="text-2xl font-bold" style={{ color: 'var(--foreground)' }}>
                   ₹{trip.group_budget_zone.min.toLocaleString('en-IN')}–₹{trip.group_budget_zone.max.toLocaleString('en-IN')}
                   <span className="text-sm font-normal ml-1" style={{ color: 'var(--muted)' }}>/person</span>
-                </div>
+                </p>
                 {trip.weighted_median_tier && (
-                  <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
                     {BUDGET_TIER_META[trip.weighted_median_tier].label} · {BUDGET_TIER_META[trip.weighted_median_tier].description}
-                  </div>
+                  </p>
                 )}
                 {tipsVisible && tips.length > 0 && (
-                  <div className="mt-3 space-y-2 border-t pt-3" style={{ borderColor: 'var(--card-border)' }}>
+                  <div className="mt-3 pt-3 space-y-3" style={{ borderTop: '1px solid var(--card-border)' }}>
                     {tips.map((tip, i) => (
                       <div key={i}>
-                        <div className="text-xs font-semibold">{tip.title}</div>
-                        <div className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--muted)' }}>{tip.tip}</div>
+                        <p className="text-xs font-semibold">{tip.title}</p>
+                        <p className="text-xs mt-0.5 leading-relaxed" style={{ color: 'var(--muted)' }}>{tip.tip}</p>
                       </div>
                     ))}
                   </div>
@@ -285,32 +410,62 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
               </div>
             )}
 
-            {/* Avatar claim grid */}
-            <div>
-              <div className="text-xs font-medium mb-2" style={{ color: 'var(--muted)' }}>
-                AVATAR CLAIMS ({avatarMap.size}/{Object.keys(AVATAR_META).length} claimed)
+            {/* Live vote tally */}
+            {currentVoteType && Object.keys(voteTally).length > 0 && (
+              <div>
+                <SectionLabel>Live vote — {currentVoteType}</SectionLabel>
+                <div className="p-4 rounded-2xl bg-white space-y-3" style={{ border: '1px solid var(--card-border)' }}>
+                  {Object.entries(voteTally).sort(([, a], [, b]) => b - a).map(([option, count]) => {
+                    const pct = activeMembers.length > 0 ? Math.round((count / activeMembers.length) * 100) : 0
+                    return (
+                      <div key={option}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-sm font-medium">{option}</span>
+                          <span className="text-xs font-semibold" style={{ color: 'var(--accent)' }}>{count}/{activeMembers.length}</span>
+                        </div>
+                        <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--card-border)' }}>
+                          <div className="h-full rounded-full transition-all" style={{ background: 'var(--accent)', width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                  <p className="text-xs pt-1" style={{ color: 'var(--muted)' }}>
+                    {currentVotes.length}/{activeMembers.length} voted · {activeMembers.length - currentVotes.length} pending
+                  </p>
+                </div>
               </div>
+            )}
+
+            {/* Avatar claims */}
+            <div>
+              <SectionLabel>Avatar claims ({claimedCount}/{Object.keys(AVATAR_META).length})</SectionLabel>
               <div className="grid grid-cols-2 gap-2">
                 {(Object.keys(AVATAR_META) as AvatarType[]).map(key => {
                   const meta = AVATAR_META[key]
-                  const holder = avatarMap.get(key)
+                  const claimants = avatarClaimMap.get(key) ?? []
+                  const claimed = claimants.length > 0
                   return (
                     <div
                       key={key}
-                      className="flex items-center gap-2.5 p-3 rounded-xl"
+                      className="flex items-start gap-2.5 p-3 rounded-2xl bg-white transition-opacity"
                       style={{
-                        background: holder ? 'var(--card)' : 'rgba(255,255,255,0.02)',
-                        border: `1px solid ${holder ? 'var(--card-border)' : 'rgba(255,255,255,0.06)'}`,
-                        opacity: holder ? 1 : 0.5,
+                        border: `1.5px solid ${claimed ? 'var(--accent)' : 'var(--card-border)'}`,
+                        opacity: claimed ? 1 : 0.4,
                       }}
                     >
-                      <span className="text-xl">{meta.icon}</span>
+                      <span className="text-2xl flex-shrink-0 mt-0.5">{meta.icon}</span>
                       <div className="min-w-0 flex-1">
-                        <div className="text-xs font-semibold truncate">{meta.label}</div>
-                        {holder ? (
-                          <div className="text-xs" style={{ color: 'var(--success)' }}>✓ Claimed</div>
+                        <p className="text-xs font-semibold truncate">{meta.label.replace('The ', '')}</p>
+                        {claimed ? (
+                          <div className="mt-0.5 space-y-0.5">
+                            {claimants.map(c => (
+                              <p key={c.id} className="text-xs font-medium truncate" style={{ color: 'var(--success)' }}>
+                                ✓ {c.name || c.email?.split('@')[0] || 'Member'}
+                              </p>
+                            ))}
+                          </div>
                         ) : (
-                          <div className="text-xs" style={{ color: 'var(--muted)' }}>Open</div>
+                          <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>Open</p>
                         )}
                       </div>
                     </div>
@@ -319,30 +474,28 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
               </div>
             </div>
 
-            {/* Non-responders */}
+            {/* Waiting to respond */}
             {nonResponders.length > 0 && (
               <div>
-                <div className="text-xs font-medium mb-2" style={{ color: 'var(--muted)' }}>
-                  WAITING TO RESPOND ({nonResponders.length})
-                </div>
+                <SectionLabel>Waiting to respond ({nonResponders.length})</SectionLabel>
                 <div className="space-y-2">
                   {nonResponders.map(m => (
                     <div
                       key={m.id}
-                      className="flex items-center justify-between p-3 rounded-xl"
-                      style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
+                      className="flex items-center justify-between p-3 rounded-2xl bg-white"
+                      style={{ border: '1px solid var(--card-border)' }}
                     >
                       <div>
-                        <div className="text-sm font-medium">{m.name ?? m.phone}</div>
-                        <div className="text-xs" style={{ color: 'var(--muted)' }}>Invite sent · not responded</div>
+                        <p className="text-sm font-medium">{memberLabel(m)}</p>
+                        <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>Invite sent · no response</p>
                       </div>
                       <button
                         onClick={() => nudge(m.id)}
-                        disabled={nudgingId === m.id}
-                        className="text-xs px-3 py-1.5 rounded-xl font-medium transition-all"
-                        style={{ background: 'var(--accent)', color: '#fff', opacity: nudgingId === m.id ? 0.6 : 1 }}
+                        disabled={nudgingIds.has(m.id)}
+                        className="text-xs px-4 py-2 rounded-xl font-semibold transition-all flex-shrink-0"
+                        style={{ background: 'var(--accent)', color: '#fff', opacity: nudgingIds.has(m.id) ? 0.6 : 1 }}
                       >
-                        {nudgingId === m.id ? '✓ Sent' : 'Nudge'}
+                        {nudgingIds.has(m.id) ? '✓ Sent' : 'Nudge'}
                       </button>
                     </div>
                   ))}
@@ -350,41 +503,37 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
               </div>
             )}
 
-            {/* Active members needing action */}
+            {/* Action needed */}
             {activeMembers.filter(m => m.status !== 'active').length > 0 && (
               <div>
-                <div className="text-xs font-medium mb-2" style={{ color: 'var(--muted)' }}>
-                  ACTION NEEDED
-                </div>
+                <SectionLabel>Action needed</SectionLabel>
                 <div className="space-y-2">
                   {activeMembers.filter(m => m.status !== 'active').map(m => {
                     const statusInfo = MEMBER_STATUS_LABELS[m.status]
-                    const needsAvatar = m.status === 'consented'
-                    const needsBudget = m.status === 'avatar_selected'
-                    const hint = needsAvatar ? 'Hasn\'t picked a role yet' : needsBudget ? 'Hasn\'t submitted budget' : 'In progress'
+                    const hint = m.status === 'consented' ? "Hasn't picked a role yet" : m.status === 'avatar_selected' ? "Hasn't submitted budget" : 'In progress'
                     return (
                       <div
                         key={m.id}
-                        className="flex items-center justify-between p-3 rounded-xl"
-                        style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
+                        className="flex items-center justify-between p-3 rounded-2xl bg-white"
+                        style={{ border: '1px solid var(--card-border)' }}
                       >
-                        <div>
-                          <div className="flex items-center gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
                             {m.avatar && <span>{AVATAR_META[m.avatar]?.icon}</span>}
-                            <span className="text-sm font-medium">{m.name ?? m.phone}</span>
-                            <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'var(--accent-muted)', color: statusInfo?.color }}>
+                            <span className="text-sm font-medium truncate">{memberLabel(m)}</span>
+                            <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'var(--accent-muted)', color: statusInfo?.color ?? 'var(--muted)' }}>
                               {statusInfo?.label}
                             </span>
                           </div>
-                          <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{hint}</div>
+                          <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{hint}</p>
                         </div>
                         <button
                           onClick={() => nudge(m.id)}
-                          disabled={nudgingId === m.id}
-                          className="text-xs px-3 py-1.5 rounded-xl font-medium"
+                          disabled={nudgingIds.has(m.id)}
+                          className="flex-shrink-0 text-xs px-3 py-2 rounded-xl font-medium ml-2"
                           style={{ border: '1px solid var(--card-border)', color: 'var(--muted)' }}
                         >
-                          {nudgingId === m.id ? '✓' : 'Nudge'}
+                          {nudgingIds.has(m.id) ? '✓' : 'Nudge'}
                         </button>
                       </div>
                     )
@@ -393,131 +542,72 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
               </div>
             )}
 
-            {/* Live vote tally */}
-            {currentVoteType && Object.keys(voteTally).length > 0 && (
-              <div>
-                <div className="text-xs font-medium mb-2" style={{ color: 'var(--muted)' }}>
-                  LIVE VOTE TALLY — {currentVoteType.toUpperCase()}
-                </div>
-                <div
-                  className="p-4 rounded-2xl space-y-2"
-                  style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
-                >
-                  {Object.entries(voteTally).sort(([, a], [, b]) => b - a).map(([option, count]) => {
-                    const pct = Math.round((count / activeMembers.length) * 100)
-                    return (
-                      <div key={option}>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm font-medium">{option}</span>
-                          <span className="text-xs" style={{ color: 'var(--muted)' }}>{count}/{activeMembers.length} · {pct}%</span>
-                        </div>
-                        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--card-border)' }}>
-                          <div className="h-full rounded-full" style={{ background: 'var(--accent)', width: `${pct}%`, transition: 'width 0.3s ease' }} />
-                        </div>
-                      </div>
-                    )
-                  })}
-                  <div className="text-xs pt-1" style={{ color: 'var(--muted)' }}>
-                    {currentVotes.length}/{activeMembers.length} voted · {activeMembers.length - currentVotes.length} pending
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Confirmed info */}
+            {/* Confirmed */}
             {trip.confirmed_destination && (
-              <div
-                className="p-4 rounded-2xl"
-                style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
-              >
-                <div className="text-xs font-medium mb-2" style={{ color: 'var(--accent)' }}>CONFIRMED</div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 text-sm">
-                    <span>📍</span>
-                    <span className="font-semibold">{trip.confirmed_destination}</span>
+              <div>
+                <SectionLabel>Confirmed</SectionLabel>
+                <div className="p-4 rounded-2xl bg-white space-y-2" style={{ border: '1px solid var(--card-border)' }}>
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-xl">📍</span>
+                    <span className="text-sm font-semibold">{trip.confirmed_destination}</span>
                   </div>
                   {trip.confirmed_hotel && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <span>🏨</span>
-                      <span>{(trip.confirmed_hotel as Hotel).name}</span>
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-xl">🏨</span>
+                      <span className="text-sm">{(trip.confirmed_hotel as Hotel).name}</span>
                     </div>
                   )}
                   {trip.departure_date && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <span>📅</span>
-                      <span>{new Date(trip.departure_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-xl">📅</span>
+                      <span className="text-sm">{new Date(trip.departure_date).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</span>
                     </div>
                   )}
                 </div>
-              </div>
-            )}
-
-            {/* Task summary */}
-            {tasks.length > 0 && (
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { label: 'Done', count: doneTasks.length, color: 'var(--success)' },
-                  { label: 'Pending', count: pendingTasks.length - overdueTasks.length, color: 'var(--accent)' },
-                  { label: 'Overdue', count: overdueTasks.length, color: '#ef4444' },
-                ].map(({ label, count, color }) => (
-                  <div
-                    key={label}
-                    className="p-3 rounded-xl text-center"
-                    style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
-                  >
-                    <div className="text-xl font-bold" style={{ color }}>{count}</div>
-                    <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{label}</div>
-                  </div>
-                ))}
               </div>
             )}
           </div>
         )}
 
-        {/* ── TASKS TAB ── */}
+        {/* TASKS */}
         {activeTab === 'tasks' && (
-          <div className="px-5 pt-2 space-y-3">
-            <div className="text-xs font-medium" style={{ color: 'var(--muted)' }}>
-              ALL TASKS · {tasks.length} total
-            </div>
+          <div className="px-5 pt-5 space-y-3">
+            <SectionLabel>All tasks · {tasks.length} total</SectionLabel>
             {tasks.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-sm" style={{ color: 'var(--muted)' }}>Tasks will appear here once the itinerary is locked.</p>
+              <div className="py-16 text-center">
+                <p className="text-4xl mb-3">📝</p>
+                <p className="text-sm" style={{ color: 'var(--muted)' }}>Tasks unlock when the itinerary is locked.</p>
               </div>
             ) : (
               tasks.map(task => {
-                const todayStr = new Date().toISOString().split('T')[0]
                 const isOverdue = task.status === 'pending' && task.deadline < todayStr
                 const member = members.find(m => m.id === task.member_id)
                 const avatarMeta = task.avatar ? AVATAR_META[task.avatar as AvatarType] : null
                 return (
                   <div
                     key={task.id}
-                    className="p-4 rounded-2xl"
-                    style={{
-                      background: 'var(--card)',
-                      border: `1px solid ${isOverdue ? '#ef4444' : 'var(--card-border)'}`,
-                    }}
+                    className="p-4 rounded-2xl bg-white"
+                    style={{ border: `1px solid ${isOverdue ? '#fca5a5' : 'var(--card-border)'}` }}
                   >
-                    <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
+                        <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                           {avatarMeta && <span className="text-sm">{avatarMeta.icon}</span>}
                           <span className="text-xs" style={{ color: 'var(--muted)' }}>{avatarMeta?.label}</span>
-                          {member && <span className="text-xs" style={{ color: 'var(--muted)' }}>· {member.name ?? member.phone}</span>}
+                          {member && <span className="text-xs" style={{ color: 'var(--muted)' }}>· {memberLabel(member)}</span>}
                         </div>
-                        <div className="text-sm font-medium leading-tight">{task.title}</div>
+                        <p className="text-sm font-semibold leading-snug">{task.title}</p>
                         {task.note && (
-                          <div className="text-xs mt-1 p-2 rounded-lg" style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}>
+                          <p className="text-xs mt-1.5 px-2.5 py-2 rounded-xl" style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}>
                             💬 {task.note}
-                          </div>
+                          </p>
                         )}
                       </div>
                       <div className="flex flex-col items-end gap-1 flex-shrink-0">
                         <span
-                          className="text-xs px-2 py-0.5 rounded-full font-medium"
+                          className="text-xs px-2.5 py-1 rounded-full font-semibold"
                           style={{
-                            background: task.status === 'done' ? 'rgba(34,197,94,0.15)' : isOverdue ? 'rgba(239,68,68,0.15)' : 'var(--card-border)',
+                            background: task.status === 'done' ? 'rgba(22,163,74,0.12)' : isOverdue ? 'rgba(239,68,68,0.12)' : 'var(--card-border)',
                             color: task.status === 'done' ? 'var(--success)' : isOverdue ? '#ef4444' : 'var(--muted)',
                           }}
                         >
@@ -526,7 +616,7 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
                         <span className="text-xs" style={{ color: 'var(--muted)' }}>
                           {new Date(task.deadline).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                         </span>
-                        <span className="text-xs font-medium" style={{ color: 'var(--accent)' }}>+{task.points}pts</span>
+                        <span className="text-xs font-semibold" style={{ color: 'var(--accent)' }}>+{task.points}pts</span>
                       </div>
                     </div>
                   </div>
@@ -536,39 +626,33 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
           </div>
         )}
 
-        {/* ── PLAN TAB ── */}
+        {/* PLAN */}
         {activeTab === 'plan' && (
-          <div className="px-5 pt-2 space-y-4">
-            {/* Destination */}
+          <div className="px-5 pt-5 space-y-4">
             {trip.confirmed_destination ? (
-              <div
-                className="p-4 rounded-2xl"
-                style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
-              >
-                <div className="text-xs font-medium mb-1" style={{ color: 'var(--accent)' }}>DESTINATION</div>
-                <div className="font-bold text-lg">{trip.confirmed_destination}</div>
+              <div className="p-4 rounded-2xl bg-white" style={{ border: '1px solid var(--card-border)' }}>
+                <p className="text-xs font-semibold tracking-wide uppercase mb-1" style={{ color: 'var(--accent)' }}>Destination</p>
+                <p className="text-xl font-bold">{trip.confirmed_destination}</p>
               </div>
             ) : (
-              <div className="p-4 rounded-2xl text-center py-8" style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}>
-                <p className="text-sm" style={{ color: 'var(--muted)' }}>Destination vote in progress</p>
+              <div className="p-6 rounded-2xl bg-white text-center" style={{ border: '1px solid var(--card-border)' }}>
+                <p className="text-3xl mb-2">🗳</p>
+                <p className="text-sm font-medium">Destination vote in progress</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>Results lock at 70% participation or deadline</p>
               </div>
             )}
 
-            {/* Hotel */}
             {trip.confirmed_hotel && (
-              <div
-                className="p-4 rounded-2xl"
-                style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
-              >
-                <div className="text-xs font-medium mb-2" style={{ color: 'var(--accent)' }}>HOTEL</div>
-                <div className="font-semibold">{(trip.confirmed_hotel as Hotel).name}</div>
-                <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{(trip.confirmed_hotel as Hotel).neighbourhood}</div>
-                <div className="text-sm font-bold mt-1">₹{(trip.confirmed_hotel as Hotel).total_per_person.toLocaleString('en-IN')}/person</div>
+              <div className="p-4 rounded-2xl bg-white" style={{ border: '1px solid var(--card-border)' }}>
+                <p className="text-xs font-semibold tracking-wide uppercase mb-2" style={{ color: 'var(--accent)' }}>Hotel</p>
+                <p className="font-semibold">{(trip.confirmed_hotel as Hotel).name}</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{(trip.confirmed_hotel as Hotel).neighbourhood}</p>
+                <p className="text-base font-bold mt-1">₹{(trip.confirmed_hotel as Hotel).total_per_person.toLocaleString('en-IN')}/person</p>
                 <a
                   href={(trip.confirmed_hotel as Hotel).booking_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block mt-2 text-center text-xs py-2 rounded-xl"
+                  className="mt-3 flex items-center justify-center py-2.5 rounded-xl text-xs font-medium"
                   style={{ border: '1px solid var(--card-border)', color: 'var(--muted)' }}
                 >
                   Book on MakeMyTrip / Booking.com →
@@ -576,94 +660,152 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
               </div>
             )}
 
-            {/* Itinerary */}
             {trip.itinerary && (trip.itinerary as ItineraryDay[]).length > 0 ? (
-              <div className="space-y-2">
-                <div className="text-xs font-medium" style={{ color: 'var(--muted)' }}>ITINERARY</div>
-                {(trip.itinerary as ItineraryDay[]).map(day => (
-                  <div
-                    key={day.day}
-                    className="p-3 rounded-xl"
-                    style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}>Day {day.day}</span>
-                      <span className="text-sm font-semibold">{day.title}</span>
+              <div>
+                <SectionLabel>Itinerary</SectionLabel>
+                <div className="space-y-2">
+                  {(trip.itinerary as ItineraryDay[]).map(day => (
+                    <div
+                      key={day.day}
+                      className="flex items-center gap-3 p-3 rounded-2xl bg-white"
+                      style={{ border: '1px solid var(--card-border)' }}
+                    >
+                      <span className="text-xs font-bold px-2.5 py-1 rounded-full flex-shrink-0" style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}>Day {day.day}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{day.title}</p>
+                        <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                          {day.activities.length} activities · ₹{day.activities.reduce((s, a) => s + (a.cost_per_person ?? 0), 0).toLocaleString('en-IN')}/person
+                        </p>
+                      </div>
                     </div>
-                    <div className="text-xs" style={{ color: 'var(--muted)' }}>
-                      {day.activities.length} activities · ₹{day.activities.reduce((s, a) => s + (a.cost_per_person ?? 0), 0).toLocaleString('en-IN')}/person
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            ) : trip.status === 'locked' ? null : (
-              <div className="p-4 rounded-2xl text-center py-8" style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}>
-                <p className="text-sm" style={{ color: 'var(--muted)' }}>Itinerary will appear after hotel is confirmed.</p>
+            ) : trip.confirmed_destination ? (
+              <div className="p-6 rounded-2xl bg-white text-center" style={{ border: '1px solid var(--card-border)' }}>
+                <p className="text-3xl mb-2">🗺</p>
+                <p className="text-sm font-medium">Itinerary coming soon</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>Unlocks after hotel is confirmed</p>
               </div>
-            )}
+            ) : null}
           </div>
         )}
 
-        {/* ── SQUAD TAB ── */}
+        {/* SQUAD */}
         {activeTab === 'squad' && (
-          <div className="px-5 pt-2 space-y-4">
-            <div className="text-xs font-medium" style={{ color: 'var(--muted)' }}>SQUAD LEADERBOARD</div>
+          <div className="px-5 pt-5 space-y-3">
+            <SectionLabel>Squad · {members.filter(m => !['declined','dropped'].includes(m.status)).length} members</SectionLabel>
             {members
               .filter(m => !['declined', 'dropped'].includes(m.status))
-              .sort((a, b) => b.points - a.points)
+              .sort((a, b) => (b.brownie_points ?? 0) - (a.brownie_points ?? 0))
               .map((m, idx) => {
                 const avatarMeta = m.avatar ? AVATAR_META[m.avatar] : null
                 const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `${idx + 1}`
                 const isInactive = m.status === 'invited'
+                const pts = m.brownie_points ?? 0
+                const statusInfo = MEMBER_STATUS_LABELS[m.status]
                 return (
                   <div
                     key={m.id}
-                    className="flex items-center gap-3 p-3 rounded-xl"
-                    style={{
-                      background: 'var(--card)',
-                      border: '1px solid var(--card-border)',
-                      opacity: isInactive ? 0.5 : 1,
-                    }}
+                    className="flex items-center gap-3 p-3 rounded-2xl bg-white"
+                    style={{ border: '1px solid var(--card-border)', opacity: isInactive ? 0.5 : 1 }}
                   >
-                    <span className="text-lg w-8 text-center flex-shrink-0">{medal}</span>
-                    <span className="text-xl flex-shrink-0">{avatarMeta?.icon ?? '❓'}</span>
+                    {/* Rank */}
+                    <span className="text-lg w-7 text-center flex-shrink-0">{medal}</span>
+
+                    {/* Avatar icon */}
+                    <span className="text-2xl flex-shrink-0">{avatarMeta?.icon ?? '👤'}</span>
+
+                    {/* Name + role + status */}
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">
-                        {m.name ?? m.phone}
+                      <p className="text-sm font-semibold truncate">
+                        {memberLabel(m)}
                         {isInactive && <span className="ml-1 text-xs" style={{ color: 'var(--muted)' }}>Zzz</span>}
-                      </div>
-                      <div className="text-xs" style={{ color: 'var(--muted)' }}>
-                        {avatarMeta?.label ?? 'No role'} · {MEMBER_STATUS_LABELS[m.status]?.label}
+                      </p>
+                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                        <span className="text-xs" style={{ color: 'var(--muted)' }}>
+                          {avatarMeta?.label.replace('The ', '') ?? 'No role'}
+                        </span>
+                        <span className="text-xs" style={{ color: 'var(--card-border)' }}>·</span>
+                        <span
+                          className="text-xs font-medium px-1.5 py-0.5 rounded-full"
+                          style={{
+                            background: 'var(--accent-muted)',
+                            color: statusInfo?.color ?? 'var(--muted)',
+                          }}
+                        >
+                          {statusInfo?.label ?? m.status}
+                        </span>
                       </div>
                     </div>
-                    <div className="text-right flex-shrink-0">
-                      <div className="font-bold" style={{ color: 'var(--accent)' }}>{m.points}</div>
-                      <div className="text-xs" style={{ color: 'var(--muted)' }}>pts</div>
+
+                    {/* Brownie points — matches user dashboard format */}
+                    <div className="text-right flex-shrink-0 min-w-[48px]">
+                      <p className="text-base font-bold" style={{ color: pts > 0 ? 'var(--accent)' : 'var(--muted)' }}>
+                        {pts}
+                      </p>
+                      <p className="text-xs" style={{ color: 'var(--muted)' }}>🍫 pts</p>
                     </div>
                   </div>
                 )
               })}
+
+            {/* Brownie points legend — same as user dashboard */}
+            <div className="p-3 rounded-2xl bg-white mt-2" style={{ border: '1px solid var(--card-border)' }}>
+              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--accent)' }}>HOW POINTS WORK</p>
+              <div className="space-y-1">
+                {[
+                  { label: 'Accepted the invite',       event: 'trip_accepted' },
+                  { label: 'Picked their role',         event: 'avatar_selected' },
+                  { label: 'Shared their vibe',         event: 'questionnaire_completed' },
+                  { label: 'Voted on destination',      event: 'destination_voted' },
+                  { label: 'Picked a hotel',            event: 'hotel_voted' },
+                  { label: 'Approved the plan',         event: 'itinerary_voted' },
+                ].map(({ label }) => (
+                  <div key={label} className="flex items-center justify-between text-xs">
+                    <span style={{ color: 'var(--muted)' }}>{label}</span>
+                    <span style={{ color: 'var(--accent)' }}>+pts</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs mt-2" style={{ color: 'var(--muted)' }}>
+                Earlier responders earn more. First = squad size pts, last = 1 pt.
+              </p>
+            </div>
           </div>
         )}
       </div>
 
-      {/* Bottom tab bar */}
+      {/* ── Bottom tab bar ── */}
       <div
         className="fixed bottom-0 left-0 right-0 safe-bottom"
-        style={{ background: 'var(--background)', borderTop: '1px solid var(--card-border)' }}
+        style={{ background: 'white', borderTop: '1px solid var(--card-border)' }}
       >
         <div className="flex">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className="flex-1 flex flex-col items-center gap-0.5 py-2 transition-colors"
-              style={{ color: activeTab === tab.id ? 'var(--accent)' : 'var(--muted)' }}
-            >
-              <span className="text-lg">{tab.icon}</span>
-              <span className="text-xs">{tab.label}</span>
-            </button>
-          ))}
+          {tabs.map(tab => {
+            const isActive = activeTab === tab.id
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className="flex-1 flex flex-col items-center justify-center gap-1 py-3"
+                style={{ minHeight: 56 }}
+              >
+                <span
+                  className="flex items-center justify-center w-10 h-7 rounded-full text-lg transition-all"
+                  style={{ background: isActive ? 'var(--accent-muted)' : 'transparent' }}
+                >
+                  {tab.emoji}
+                </span>
+                <span
+                  className="text-xs font-medium transition-colors"
+                  style={{ color: isActive ? 'var(--accent)' : 'var(--muted)' }}
+                >
+                  {tab.label}
+                </span>
+              </button>
+            )
+          })}
         </div>
       </div>
     </div>

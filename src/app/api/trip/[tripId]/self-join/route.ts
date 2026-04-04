@@ -34,6 +34,9 @@ export async function POST(
     .single()
 
   if (existing) {
+    if (existing.status === 'declined') {
+      return NextResponse.json({ error: 'You declined this trip. Ask the organiser to re-invite you.' }, { status: 403 })
+    }
     return NextResponse.json({ memberId: existing.id })
   }
 

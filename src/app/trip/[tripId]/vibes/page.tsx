@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, use } from 'react'
+import React, { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { AVATAR_META } from '@/types'
@@ -23,14 +23,13 @@ function DonutChart({ slices }: { slices: { label: string; value: number; color:
   const total = slices.reduce((s, d) => s + d.value, 0) || 1
   const r = 54, cx = 70, cy = 70, sw = 22
   const circ = 2 * Math.PI * r
-  let cumulative = 0
+  const cumulatives = slices.map((_, i) => slices.slice(0, i).reduce((sum, d) => sum + d.value, 0))
   return (
     <div className="flex items-center gap-4">
       <svg width={140} height={140} viewBox="0 0 140 140" style={{ flexShrink: 0 }}>
         {slices.map((s, i) => {
           const dash = (s.value / total) * circ
-          const rotation = (cumulative / total) * 360 - 90
-          cumulative += s.value
+          const rotation = (cumulatives[i] / total) * 360 - 90
           return (
             <circle key={i} cx={cx} cy={cy} r={r} fill="none"
               stroke={s.color} strokeWidth={sw}
@@ -70,6 +69,15 @@ function BarChart({ items }: { items: { emoji: string; label: string; count: num
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+function Card({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="p-4 rounded-2xl" style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}>
+      <div className="text-xs font-medium mb-3" style={{ color: 'var(--accent)' }}>{title}</div>
+      {children}
     </div>
   )
 }
@@ -154,13 +162,6 @@ export default function VibesPage({ params }: { params: Promise<{ tripId: string
 
   const allAvatars = Object.keys(AVATAR_META) as AvatarType[]
   const specialReqs = members.filter(m => m.special_requests).map(m => m.special_requests!)
-
-  const Card = ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <div className="p-4 rounded-2xl" style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}>
-      <div className="text-xs font-medium mb-3" style={{ color: 'var(--accent)' }}>{title}</div>
-      {children}
-    </div>
-  )
 
   return (
     <div className="min-h-dvh" style={{ background: 'var(--background)' }}>

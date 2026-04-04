@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
     memberEmails,
     destinationMode,
     travelMonth,
+    voteDeadline,
   } = await req.json()
 
   if (!destinations?.length || !organizerEmail) {
@@ -63,6 +64,7 @@ export async function POST(req: NextRequest) {
       travel_code: travelCode,
       departure_date: travelMonth ? `${travelMonth}-01` : null,
       return_date: null,
+      vote_deadline: voteDeadline ? new Date(voteDeadline).toISOString() : null,
       status_updated_at: now.toISOString(),
       questionnaire_started_at: now.toISOString(),
       questionnaire_deadline_at: questDeadline.toISOString(),

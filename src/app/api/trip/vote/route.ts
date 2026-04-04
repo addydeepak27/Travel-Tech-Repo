@@ -10,6 +10,13 @@ export async function POST(req: NextRequest) {
 
   const db = createServiceClient()
 
+  // Enforce vote_deadline server-side
+  const { data: trip } = await db.from('trips').select('vote_deadline, status').eq('id', tripId).single()
+  if (!trip) return NextResponse.json({ error: 'Trip not found' }, { status: 404 })
+  if (trip.vote_deadline && new Date(trip.vote_deadline) < new Date()) {
+    return NextResponse.json({ error: 'Voting has closed — the deadline has passed.' }, { status: 403 })
+  }
+
   const { data: member } = await db
     .from('members')
     .select('email, status')

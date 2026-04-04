@@ -71,6 +71,7 @@ export interface Trip {
   questionnaire_deadline_at: string | null
   nudge_frequency_type: NudgeFrequencyType
   nudge_frequency_value: number | null
+  vote_deadline: string | null
 }
 
 export interface Member {

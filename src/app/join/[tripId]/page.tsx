@@ -4,7 +4,6 @@ import { useState, useEffect, use } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { AVATAR_META } from '@/types'
 import type { AvatarType } from '@/types'
-import { supabase } from '@/lib/supabase'
 
 export default function JoinPage({ params }: { params: Promise<{ tripId: string }> }) {
   const { tripId } = use(params)
@@ -42,7 +41,7 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
           typeof d === 'string' ? { name: d } : { name: d.name ?? '', emoji: d.emoji }
         )
         setDestinations(dests)
-        setMemberCount(data.members?.length ?? 0)
+        setMemberCount((data.members ?? []).filter((m: { status: string }) => !['declined', 'dropped'].includes(m.status)).length)
 
         const org = data.members?.find((m: { id: string }) => m.id === data.organizer_id)
         if (org?.avatar) setOrganizerAvatar(org.avatar as AvatarType)
@@ -55,7 +54,7 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
             setLoading(false)
             return
           }
-          if (me?.status === 'consented' || me?.status === 'avatar_selected' || me?.status === 'active') {
+          if (me?.status === 'consented' || me?.status === 'avatar_selected' || me?.status === 'budget_submitted' || me?.status === 'active') {
             setAlreadyResponded('in')
           } else if (me?.status === 'declined') {
             setAlreadyResponded('out')
@@ -70,46 +69,61 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
     load(0)
   }, [tripId, memberId, retryCount])
 
+  const selfEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(selfEmail)
+
   async function handleSelfJoin() {
-    if (!selfEmail.includes('@') || selfEmailLookingUp) return
+    if (!selfEmailValid || selfEmailLookingUp) return
     setSelfEmailLookingUp(true)
     setSelfEmailError('')
-    const res = await fetch(`/api/trip/${tripId}/self-join`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: selfEmail }),
-    })
-    if (!res.ok) {
-      setSelfEmailError('Something went wrong — try again.')
+    try {
+      const res = await fetch(`/api/trip/${tripId}/self-join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: selfEmail }),
+      })
+      if (res.status === 403) {
+        setSelfEmailError("You've declined this trip. Ask the organiser to re-invite you.")
+        setSelfEmailLookingUp(false)
+        return
+      }
+      if (!res.ok) {
+        setSelfEmailError('Something went wrong — try again.')
+        setSelfEmailLookingUp(false)
+        return
+      }
+      const { memberId: mid } = await res.json()
+      // Redirect to personalised link — this re-renders the page with ?m= param
+      window.location.href = `/join/${tripId}?m=${mid}`
+    } catch {
+      setSelfEmailError('Network error — check your connection and try again.')
       setSelfEmailLookingUp(false)
-      return
     }
-    const { memberId: mid } = await res.json()
-    // Redirect to personalised link — this re-renders the page with ?m= param
-    window.location.href = `/join/${tripId}?m=${mid}`
   }
 
   async function handleConsent(choice: 'in' | 'out') {
     if (responding || !memberId) return
     setResponding(true)
 
-    if (choice === 'in') {
-      await supabase
-        .from('members')
-        .update({ status: 'consented', joined_at: new Date().toISOString() })
-        .eq('id', memberId)
+    try {
+      const res = await fetch(`/api/trip/${tripId}/consent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId, choice }),
+      })
 
-      // Store member ID in localStorage for this trip
-      localStorage.setItem(`ts_member_${tripId}`, memberId)
+      if (!res.ok) {
+        setResponding(false)
+        return
+      }
 
-      router.push(`/avatar/${tripId}/${memberId}`)
-    } else {
-      await supabase
-        .from('members')
-        .update({ status: 'declined' })
-        .eq('id', memberId)
-
-      setAlreadyResponded('out')
+      if (choice === 'in') {
+        try { localStorage.setItem(`ts_member_${tripId}`, memberId) } catch { /* quota/private mode */ }
+        router.push(`/avatar/${tripId}/${memberId}`)
+      } else {
+        setAlreadyResponded('out')
+        setResponding(false)
+      }
+    } catch {
       setResponding(false)
     }
   }
@@ -183,45 +197,30 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
   return (
     <div className="min-h-dvh flex flex-col" style={{ background: 'var(--background)' }}>
       {/* Header */}
-      <div className="safe-top px-5 pt-8 pb-6 text-center">
-        <div className="text-4xl mb-3">🌊</div>
-        <h1 className="text-2xl font-bold">{tripName}</h1>
+      <div className="safe-top px-5 pt-8 pb-8 text-center relative overflow-hidden" style={{ background: 'var(--hero-gradient)' }}>
+        <div className="absolute top-0 left-1/4 w-40 h-40 rounded-full blur-3xl opacity-25 pointer-events-none" style={{ background: '#a78bfa' }} />
+        <div className="absolute bottom-0 right-1/4 w-32 h-32 rounded-full blur-3xl opacity-20 pointer-events-none" style={{ background: '#f472b6' }} />
+        <div className="text-5xl mb-3 relative">🌊</div>
+        <h1 className="text-2xl font-black text-white relative">{tripName}</h1>
         {orgMeta && (
-          <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>
+          <p className="text-sm mt-1.5 relative" style={{ color: 'rgba(255,255,255,0.75)' }}>
             {orgMeta.icon} {orgMeta.label} is organising this trip
           </p>
         )}
+        <div className="mt-4 flex justify-center gap-2 flex-wrap relative">
+          {destinations.slice(0, 4).map(d => (
+            <span key={d.name} className="px-3 py-1 rounded-full text-xs font-semibold" style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)' }}>
+              {d.emoji ? `${d.emoji} ` : ''}{d.name}
+            </span>
+          ))}
+        </div>
       </div>
 
       {/* Trip details */}
       <div className="flex-1 px-5 space-y-4 pb-8">
-        {/* Destinations */}
-        <div
-          className="p-4 rounded-2xl"
-          style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
-        >
-          <div className="text-xs font-medium mb-2" style={{ color: 'var(--accent)' }}>
-            DESTINATION OPTIONS
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {destinations.map(d => (
-              <span
-                key={d.name}
-                className="px-3 py-1 rounded-full text-sm font-medium"
-                style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}
-              >
-                {d.emoji ? `${d.emoji} ` : ''}{d.name}
-              </span>
-            ))}
-          </div>
-          <p className="text-xs mt-2" style={{ color: 'var(--muted)' }}>
-            The group votes on the final destination after everyone joins.
-          </p>
-        </div>
-
         {/* Group */}
         <div
-          className="p-4 rounded-2xl"
+          className="p-4 rounded-2xl card-elevated"
           style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
         >
           <div className="text-xs font-medium mb-2" style={{ color: 'var(--accent)' }}>
@@ -235,6 +234,47 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
                 Everyone picks a role and owns part of the planning
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Brownie points — gamification FOMO hook */}
+        <div
+          className="p-4 rounded-2xl"
+          style={{ background: 'linear-gradient(135deg, rgba(124,58,237,0.08), rgba(219,39,119,0.08))', border: '1.5px solid rgba(124,58,237,0.2)' }}
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xl">🍫</span>
+            <p className="text-sm font-black">First = more brownie points</p>
+          </div>
+          <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
+            Every action earns points — but early movers earn <span style={{ color: '#db2777', fontWeight: 700 }}>way more</span>. The squad leaderboard is live.
+          </p>
+          <div className="space-y-2">
+            {[
+              { emoji: '⚡', action: 'Accept invite now', pts: `${memberCount} pts`, hot: true },
+              { emoji: '🎭', action: 'Pick your role early', pts: `${Math.max(1, memberCount - 1)} pts`, hot: false },
+              { emoji: '🗳️', action: 'Vote before deadline', pts: 'decays each hour', hot: false },
+              { emoji: '✅', action: 'Fill your preferences', pts: 'bonus pts', hot: false },
+            ].map(({ emoji, action, pts, hot }) => (
+              <div key={action} className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">{emoji}</span>
+                  <span className="text-xs font-medium">{action}</span>
+                </div>
+                <span
+                  className="text-xs font-bold px-2 py-0.5 rounded-full"
+                  style={{
+                    background: hot ? 'rgba(124,58,237,0.15)' : 'rgba(0,0,0,0.05)',
+                    color: hot ? '#7c3aed' : 'var(--muted)',
+                  }}
+                >
+                  +{pts}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 pt-3 text-xs font-semibold" style={{ borderTop: '1px solid rgba(124,58,237,0.15)', color: '#db2777' }}>
+            ⏰ Whoever joins last gets 1 pt. First in = full squad size. Don&apos;t be last.
           </div>
         </div>
 
@@ -276,14 +316,14 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
               onChange={e => setSelfEmail(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSelfJoin()}
               className="w-full px-4 py-3 rounded-xl text-sm outline-none mb-2"
-              style={{ background: 'var(--background)', border: selfEmail && !selfEmail.includes('@') ? '1px solid #ef4444' : '1px solid var(--card-border)' }}
+              style={{ background: 'var(--card)', border: selfEmail && !selfEmailValid ? '1.5px solid #ef4444' : `1.5px solid ${selfEmail ? 'var(--accent)' : 'var(--input-border)'}` }}
             />
             {selfEmailError && <p className="text-xs mb-2" style={{ color: '#ef4444' }}>{selfEmailError}</p>}
             <button
               onClick={handleSelfJoin}
-              disabled={!selfEmail.includes('@') || selfEmailLookingUp}
+              disabled={!selfEmailValid || selfEmailLookingUp}
               className="w-full py-3 rounded-xl font-bold text-sm disabled:opacity-40"
-              style={{ background: 'var(--accent)', color: '#fff' }}
+              style={{ background: 'linear-gradient(135deg, #7c3aed, #db2777)', color: '#fff', boxShadow: '0 4px 16px rgba(124,58,237,0.3)' }}
             >
               {selfEmailLookingUp ? '⏳ Looking you up...' : 'Join this trip →'}
             </button>
@@ -301,7 +341,7 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
             onClick={() => handleConsent('in')}
             disabled={responding}
             className="w-full py-4 rounded-2xl font-bold text-base transition-all disabled:opacity-60"
-            style={{ background: 'var(--accent)', color: '#fff' }}
+            style={{ background: 'linear-gradient(135deg, #7c3aed, #db2777)', color: '#fff', boxShadow: '0 4px 20px rgba(124,58,237,0.35)' }}
           >
             {responding ? '⏳' : "I'm In 🙌"}
           </button>

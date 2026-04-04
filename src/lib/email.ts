@@ -1,5 +1,6 @@
 const resendKey = process.env.RESEND_API_KEY ?? ''
-const FROM = 'Toh Chale <noreply@tohchale.com>'
+// Use resend.dev test address until tohchale.com domain is verified in Resend dashboard
+const FROM = process.env.RESEND_FROM ?? 'Toh Chale <onboarding@resend.dev>'
 
 export async function sendEmail(to: string, subject: string, body: string): Promise<void> {
   if (!to || !to.includes('@')) {

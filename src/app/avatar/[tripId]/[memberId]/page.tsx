@@ -2,7 +2,6 @@
 
 import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
 import { AVATAR_META } from '@/types'
 import type { AvatarType } from '@/types'
 
@@ -20,15 +19,26 @@ const NON_PLANNER_AVATARS: AvatarType[] = [
   'navigator', 'budgeteer', 'foodie', 'adventure_seeker', 'photographer', 'spontaneous_one',
 ]
 
+const AVATAR_COLORS: Record<AvatarType, { bg: string; border: string; accent: string }> = {
+  planner:          { bg: 'rgba(124,58,237,0.08)', border: 'rgba(124,58,237,0.2)', accent: '#7c3aed' },
+  navigator:        { bg: 'rgba(5,150,105,0.08)',  border: 'rgba(5,150,105,0.2)',  accent: '#059669' },
+  budgeteer:        { bg: 'rgba(249,115,22,0.08)', border: 'rgba(249,115,22,0.2)', accent: '#f97316' },
+  foodie:           { bg: 'rgba(219,39,119,0.08)', border: 'rgba(219,39,119,0.2)', accent: '#db2777' },
+  adventure_seeker: { bg: 'rgba(14,165,233,0.08)', border: 'rgba(14,165,233,0.2)', accent: '#0ea5e9' },
+  photographer:     { bg: 'rgba(168,85,247,0.08)', border: 'rgba(168,85,247,0.2)',  accent: '#a855f7' },
+  spontaneous_one:  { bg: 'rgba(234,179,8,0.08)',  border: 'rgba(234,179,8,0.2)',   accent: '#eab308' },
+}
+
 export default function AvatarPage({ params }: { params: Promise<{ tripId: string; memberId: string }> }) {
   const { tripId, memberId } = use(params)
   const router = useRouter()
 
-  const [takenAvatars, setTakenAvatars] = useState<AvatarType[]>([])
+  const [avatarCounts, setAvatarCounts] = useState<Partial<Record<AvatarType, number>>>({})
   const [selected, setSelected] = useState<AvatarType | null>(null)
   const [tripName, setTripName] = useState('')
   const [organizerAvatar, setOrganizerAvatar] = useState<AvatarType | null>(null)
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState(false)
   const [isOrganizer, setIsOrganizer] = useState(false)
   const [loading, setLoading] = useState(true)
   const [expandedAvatar, setExpandedAvatar] = useState<AvatarType | null>(null)
@@ -42,10 +52,14 @@ export default function AvatarPage({ params }: { params: Promise<{ tripId: strin
 
         setTripName(trip.name)
 
-        const taken = (trip.members ?? [])
+        const counts: Partial<Record<AvatarType, number>> = {}
+        ;(trip.members ?? [])
           .filter((m: { avatar: string | null; id: string }) => m.avatar && m.id !== memberId)
-          .map((m: { avatar: string }) => m.avatar as AvatarType)
-        setTakenAvatars(taken)
+          .forEach((m: { avatar: string }) => {
+            const a = m.avatar as AvatarType
+            counts[a] = (counts[a] ?? 0) + 1
+          })
+        setAvatarCounts(counts)
 
         const org = (trip.members ?? []).find((m: { id: string }) => m.id === trip.organizer_id)
         if (org?.avatar) setOrganizerAvatar(org.avatar as AvatarType)
@@ -60,10 +74,10 @@ export default function AvatarPage({ params }: { params: Promise<{ tripId: strin
     ? (Object.keys(AVATAR_META) as AvatarType[])
     : NON_PLANNER_AVATARS
 
-  const availableCount = showAvatars.filter(a => !takenAvatars.includes(a)).length
+  const availableCount = showAvatars.length
 
   async function handleSelect(avatar: AvatarType) {
-    if (saving || takenAvatars.includes(avatar)) return
+    if (saving) return
 
     // Expand card on first tap — confirm on second tap of same card
     if (expandedAvatar !== avatar) {
@@ -73,29 +87,22 @@ export default function AvatarPage({ params }: { params: Promise<{ tripId: strin
 
     setSaving(true)
     setSelected(avatar)
+    setSaveError(false)
 
-    const { data: existing } = await supabase
-      .from('members')
-      .select('id')
-      .eq('trip_id', tripId)
-      .eq('avatar', avatar)
-      .neq('id', memberId)
-      .limit(1)
-
-    if (existing && existing.length > 0) {
-      setTakenAvatars(prev => [...prev, avatar])
-      setSelected(null)
+    try {
+      const res = await fetch('/api/member/avatar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId, avatar }),
+      })
+      if (!res.ok) throw new Error('save failed')
+      setTimeout(() => router.push(`/preferences/${tripId}/${memberId}`), 500)
+    } catch {
       setSaving(false)
+      setSelected(null)
       setExpandedAvatar(null)
-      return
+      setSaveError(true)
     }
-
-    await supabase
-      .from('members')
-      .update({ avatar, status: 'avatar_selected' })
-      .eq('id', memberId)
-
-    setTimeout(() => router.push(`/preferences/${tripId}/${memberId}`), 500)
   }
 
   if (loading) {
@@ -113,14 +120,13 @@ export default function AvatarPage({ params }: { params: Promise<{ tripId: strin
     <div className="min-h-dvh flex flex-col" style={{ background: 'var(--background)' }}>
 
       {/* Header */}
-      <div className="safe-top px-5 pt-8 pb-4 text-center">
-        <div className="text-3xl mb-2">🎭</div>
-        <h1 className="text-2xl font-bold">Pick your role</h1>
-        <p className="text-sm mt-1.5" style={{ color: 'var(--muted)' }}>
-          Every person on this trip owns a slice of the planning.{' '}
-          <span style={{ color: 'var(--accent)' }}>
-            {availableCount} role{availableCount !== 1 ? 's' : ''} still up for grabs.
-          </span>
+      <div className="safe-top px-5 pt-8 pb-5 text-center relative overflow-hidden" style={{ background: 'var(--hero-gradient)' }}>
+        <div className="absolute top-0 left-1/3 w-40 h-40 rounded-full blur-3xl opacity-30 pointer-events-none" style={{ background: '#a78bfa' }} />
+        <div className="text-4xl mb-2 relative">🎭</div>
+        <h1 className="text-2xl font-black text-white relative">Pick your role</h1>
+        <p className="text-sm mt-1.5 relative" style={{ color: 'rgba(255,255,255,0.75)' }}>
+          Every person owns a slice of the planning.{' '}
+          <span style={{ color: '#fde68a' }}>Roles can be shared.</span>
         </p>
         {organizerAvatar && organizerAvatar !== 'planner' && (
           <div
@@ -136,24 +142,20 @@ export default function AvatarPage({ params }: { params: Promise<{ tripId: strin
       <div className="flex-1 px-4 pb-4 space-y-3 overflow-y-auto">
         {showAvatars.map(key => {
           const meta = AVATAR_META[key]
-          const taken = takenAvatars.includes(key)
+          const count = avatarCounts[key] ?? 0
           const isSelected = selected === key
           const isExpanded = expandedAvatar === key
+          const colors = AVATAR_COLORS[key]
 
           return (
             <button
               key={key}
               onClick={() => handleSelect(key)}
-              disabled={taken || saving}
-              className="w-full text-left rounded-2xl transition-all overflow-hidden"
+              disabled={saving}
+              className="w-full text-left rounded-2xl transition-all overflow-hidden card-elevated"
               style={{
-                background: isSelected
-                  ? 'var(--accent)'
-                  : isExpanded
-                    ? 'var(--accent-muted)'
-                    : 'var(--card)',
-                border: `1.5px solid ${isSelected || isExpanded ? 'var(--accent)' : taken ? 'var(--card-border)' : 'var(--card-border)'}`,
-                opacity: taken ? 0.45 : 1,
+                background: isSelected ? colors.accent : isExpanded ? colors.bg : 'var(--card)',
+                border: `1.5px solid ${isSelected || isExpanded ? colors.border : 'var(--card-border)'}`,
               }}
             >
               {/* Always-visible row */}
@@ -167,12 +169,12 @@ export default function AvatarPage({ params }: { params: Promise<{ tripId: strin
                     >
                       {meta.label}
                     </span>
-                    {taken && (
+                    {count > 0 && (
                       <span
                         className="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0"
-                        style={{ background: 'var(--card-border)', color: 'var(--muted)' }}
+                        style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}
                       >
-                        Taken
+                        {count} member{count !== 1 ? 's' : ''}
                       </span>
                     )}
                   </div>
@@ -183,28 +185,26 @@ export default function AvatarPage({ params }: { params: Promise<{ tripId: strin
                     {AVATAR_TAGLINES[key]}
                   </p>
                 </div>
-                {!taken && (
-                  <span
-                    className="text-lg flex-shrink-0 transition-transform"
-                    style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', color: 'var(--muted)' }}
-                  >
-                    ›
-                  </span>
-                )}
+                <span
+                  className="text-lg flex-shrink-0 transition-transform"
+                  style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', color: 'var(--muted)' }}
+                >
+                  ›
+                </span>
               </div>
 
               {/* Expanded detail */}
-              {isExpanded && !taken && (
+              {isExpanded && (
                 <div
                   className="px-4 pb-4 space-y-3"
-                  style={{ borderTop: '1px solid var(--accent)', paddingTop: '12px' }}
+                  style={{ borderTop: `1px solid ${colors.border}`, paddingTop: '12px' }}
                 >
                   <p className="text-sm leading-relaxed" style={{ color: 'var(--foreground)' }}>
                     {meta.description}
                   </p>
 
                   <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--accent)' }}>
+                    <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: colors.accent }}>
                       Your missions
                     </p>
                     {meta.key_tasks.map((t, i) => (
@@ -223,7 +223,7 @@ export default function AvatarPage({ params }: { params: Promise<{ tripId: strin
 
                   <div
                     className="w-full py-3 rounded-xl font-bold text-sm text-center"
-                    style={{ background: 'var(--accent)', color: '#fff' }}
+                    style={{ background: colors.accent, color: '#fff' }}
                   >
                     {isSelected ? '⏳ Locking you in…' : `I'm the ${meta.label} 🙋`}
                   </div>
@@ -235,9 +235,13 @@ export default function AvatarPage({ params }: { params: Promise<{ tripId: strin
       </div>
 
       <div className="px-5 py-3 safe-bottom text-center">
+        {saveError && (
+          <p className="text-xs mb-1.5 font-medium" style={{ color: '#ef4444' }}>
+            Couldn&apos;t save — check your connection and try again.
+          </p>
+        )}
         <p className="text-xs" style={{ color: 'var(--muted)' }}>
-          Tap a role to preview → tap again to claim it.
-          {takenAvatars.length > 0 && ` ${takenAvatars.length} role${takenAvatars.length > 1 ? 's' : ''} already claimed.`}
+          Tap a role to preview → tap again to claim it. Roles can be shared.
         </p>
       </div>
     </div>

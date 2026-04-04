@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect, use, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { AVATAR_META, BUDGET_TIER_META } from '@/types'
@@ -79,7 +79,7 @@ function StickyHeader({
   ].filter(Boolean) as { emoji: string; text: string }[]
 
   return (
-    <div className="sticky top-0 z-10 bg-white border-b border-gray-100 px-5 pt-4 pb-3">
+    <div className="sticky top-0 z-10 px-5 pt-4 pb-3" style={{ background: 'var(--background)', borderBottom: '1px solid var(--card-border)' }}>
       <div className="flex items-start justify-between">
         <h1 className="text-lg font-bold truncate flex-1 min-w-0 pr-3">{trip.name}</h1>
         {myAvatarMeta && (
@@ -97,7 +97,7 @@ function StickyHeader({
 
       <div className="flex gap-2 mt-2 overflow-x-auto pb-0.5 no-scrollbar">
         {pills.map((pill, i) => (
-          <div key={i} className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-gray-100 flex-shrink-0 text-xs font-medium text-gray-700">
+          <div key={i} className="flex items-center gap-1 px-2.5 py-1 rounded-full flex-shrink-0 text-xs font-medium" style={{ background: 'var(--card-border)', color: 'var(--foreground)' }}>
             <span>{pill.emoji}</span>
             <span>{pill.text}</span>
           </div>
@@ -105,7 +105,7 @@ function StickyHeader({
       </div>
 
       <div className="flex items-center gap-2 mt-2.5">
-        <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-gray-100">
+        <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--card-border)' }}>
           <div className="h-full rounded-full transition-all" style={{ width: `${hypeScore}%`, background: 'var(--accent)' }} />
         </div>
         <span className="text-xs font-bold" style={{ color: hypeScore > 70 ? 'var(--success)' : 'var(--accent)' }}>
@@ -248,15 +248,114 @@ function ItineraryCard({
   )
 }
 
+// ── Vote deadline countdown ───────────────────────────────────────────────────
+function VoteDeadlineBanner({ deadline }: { deadline: string | null }) {
+  const [timeLeft, setTimeLeft] = useState('')
+  const [urgent, setUrgent] = useState(false)
+
+  useEffect(() => {
+    if (!deadline) return
+    function tick() {
+      const ms = new Date(deadline!).getTime() - Date.now()
+      if (ms <= 0) { setTimeLeft('Vote closed'); return }
+      const totalMins = Math.floor(ms / 60000)
+      const h = Math.floor(totalMins / 60)
+      const m = totalMins % 60
+      const d = Math.floor(h / 24)
+      setUrgent(ms < 3_600_000) // red under 1h
+      if (d > 0) setTimeLeft(`${d}d ${h % 24}h left`)
+      else if (h > 0) setTimeLeft(`${h}h ${m}m left`)
+      else setTimeLeft(`${m}m left`)
+    }
+    tick()
+    const id = setInterval(tick, 30_000)
+    return () => clearInterval(id)
+  }, [deadline])
+
+  if (!deadline) return null
+
+  return (
+    <div
+      className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold mt-3"
+      style={{
+        background: urgent ? 'rgba(239,68,68,0.1)' : 'rgba(219,39,119,0.08)',
+        border: `1px solid ${urgent ? 'rgba(239,68,68,0.3)' : 'rgba(219,39,119,0.25)'}`,
+        color: urgent ? '#ef4444' : '#db2777',
+      }}
+    >
+      <span>{urgent ? '🔴' : '⏳'}</span>
+      <span>Voting closes in {timeLeft}</span>
+      <span style={{ opacity: 0.6, marginLeft: 'auto' }}>
+        {new Date(deadline).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+      </span>
+    </div>
+  )
+}
+
 // ── Voting Card (voting stage) ────────────────────────────────────────────────
-function VotingCard({ trip, tripId }: { trip: Trip; tripId: string }) {
+function VotingCard({ trip, tripId, myMember }: { trip: Trip; tripId: string; myMember: Member | null }) {
   const router = useRouter()
+  const [voted, setVoted] = useState<string | null>(null)
+  const [voting, setVoting] = useState(false)
+  const [voteError, setVoteError] = useState<string | null>(null)
+  const [voteCounts, setVoteCounts] = useState<Record<string, number>>({})
+
+  // Fetch existing destination votes and subscribe to realtime updates
+  useEffect(() => {
+    if (trip.status !== 'destination_vote') return
+    function fetchDestVotes() {
+      fetch(`/api/trip/${tripId}/votes?voteType=destination`)
+        .then(r => r.json())
+        .then((data: { value: string; member_id?: string }[]) => {
+          const counts: Record<string, number> = {}
+          for (const v of data ?? []) counts[v.value] = (counts[v.value] ?? 0) + 1
+          setVoteCounts(counts)
+          if (myMember && !voted) {
+            const myVote = data.find(v => v.member_id === myMember.id)
+            if (myVote) setVoted(myVote.value)
+          }
+        })
+        .catch(() => {})
+    }
+    fetchDestVotes()
+    const channel = supabase
+      .channel(`dest-votes-${tripId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'votes', filter: `trip_id=eq.${tripId}` },
+        fetchDestVotes)
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [tripId, trip.status, myMember?.id])
+
+  async function handleDestinationVote(name: string) {
+    if (!myMember || voting || voted) return
+    setVoting(true)
+    setVoteError(null)
+    try {
+      const res = await fetch('/api/trip/vote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tripId, memberId: myMember.id, voteType: 'destination', value: name }),
+      })
+      if (res.status === 403) {
+        const { error } = await res.json().catch(() => ({ error: 'Voting closed' }))
+        setVoteError(error)
+        setVoting(false)
+        return
+      }
+      if (!res.ok) { setVoting(false); return }
+      setVoted(name)
+      setVoteCounts(prev => ({ ...prev, [name]: (prev[name] ?? 0) + 1 }))
+    } catch {
+      setVoteError('Network error — try again.')
+    }
+    setVoting(false)
+  }
 
   const configs: Partial<Record<Trip['status'], { icon: string; title: string; body: string; cta?: { label: string; href: string } }>> = {
     destination_vote: {
       icon: '🗳',
       title: 'Where should the squad go?',
-      body: 'Options are on the table. Vote before the window closes.',
+      body: 'Tap your pick — majority wins.',
     },
     destination_tiebreaker: {
       icon: '⚖️',
@@ -285,28 +384,71 @@ function VotingCard({ trip, tripId }: { trip: Trip; tripId: string }) {
   if (!config) return null
 
   const destOptions = Array.isArray(trip.destination_options)
-    ? (trip.destination_options as unknown as { name: string; emoji?: string }[])
+    ? (trip.destination_options as unknown[]).map(d =>
+        typeof d === 'string' ? { name: d } : { name: (d as { name?: string }).name ?? '', emoji: (d as { emoji?: string }).emoji }
+      )
     : []
+
+  const totalVotes = Object.values(voteCounts).reduce((s, n) => s + n, 0)
 
   return (
     <Card title="Open vote">
       <div className="flex items-start gap-3">
         <span className="text-2xl flex-shrink-0">{config.icon}</span>
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <div className="font-semibold text-sm">{config.title}</div>
           <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>{config.body}</div>
 
+          <VoteDeadlineBanner deadline={trip.vote_deadline ?? null} />
+
+          {voteError && (
+            <div className="mt-2 px-3 py-2 rounded-xl text-xs font-semibold" style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+              🔒 {voteError}
+            </div>
+          )}
+
           {trip.status === 'destination_vote' && destOptions.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-3">
-              {destOptions.map((d, i) => (
-                <span
-                  key={i}
-                  className="px-3 py-1 rounded-full text-xs font-medium"
-                  style={{ background: 'var(--card-border)' }}
-                >
-                  {d.emoji} {d.name}
-                </span>
-              ))}
+            <div className="flex flex-col gap-2 mt-3">
+              {destOptions.map((d, i) => {
+                const isVoted = voted === d.name
+                const count = voteCounts[d.name] ?? 0
+                const pct = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0
+                return (
+                  <button
+                    key={i}
+                    onClick={() => handleDestinationVote(d.name)}
+                    disabled={!!voted || voting || !myMember}
+                    className="w-full text-left px-4 py-3 rounded-2xl transition-all"
+                    style={{
+                      background: isVoted ? 'var(--accent)' : 'var(--card-border)',
+                      border: `1.5px solid ${isVoted ? 'var(--accent)' : 'transparent'}`,
+                      color: isVoted ? '#fff' : 'var(--foreground)',
+                      opacity: voted && !isVoted ? 0.6 : 1,
+                      cursor: voted ? 'default' : 'pointer',
+                    }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-sm">
+                        {d.emoji} {d.name}
+                        {isVoted && <span className="ml-2 text-xs opacity-80">✓ Your vote</span>}
+                      </span>
+                      {voted && count > 0 && (
+                        <span className="text-xs font-medium opacity-80">{count} vote{count !== 1 ? 's' : ''}</span>
+                      )}
+                    </div>
+                    {voted && totalVotes > 0 && (
+                      <div className="mt-2 h-1 rounded-full overflow-hidden" style={{ background: isVoted ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.1)' }}>
+                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: isVoted ? '#fff' : 'var(--accent)' }} />
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+              {!myMember && (
+                <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>
+                  Use your invite link to vote.
+                </p>
+              )}
             </div>
           )}
 
@@ -344,48 +486,70 @@ function ItineraryPlansCard({
   const [expanded, setExpanded] = useState<string | null>(null)
   const [voted, setVoted] = useState<string | null>(null)
   const [voting, setVoting] = useState(false)
+  const [voteError, setVoteError] = useState<string | null>(null)
   const [voteCounts, setVoteCounts] = useState<Record<string, number>>({})
   const router = useRouter()
+
+  function fetchVotes() {
+    fetch(`/api/trip/${tripId}/votes?voteType=itinerary`)
+      .then(r => r.json())
+      .then((data: { value: string; member_id?: string }[]) => {
+        const counts: Record<string, number> = {}
+        for (const v of data ?? []) counts[v.value] = (counts[v.value] ?? 0) + 1
+        setVoteCounts(counts)
+        if (myMember && !voted) {
+          const myVote = data.find(v => v.member_id === myMember.id)
+          if (myVote) setVoted(myVote.value)
+        }
+      })
+      .catch(() => {})
+  }
+
+  useEffect(() => {
+    fetchVotes()
+    // Re-fetch when any vote is cast (realtime)
+    const channel = supabase
+      .channel(`itinerary-votes-${tripId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'votes', filter: `trip_id=eq.${tripId}` },
+        fetchVotes)
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [tripId, myMember?.id])
 
   const plans = trip.itinerary_options
   if (!plans || plans.length === 0) return null
 
-  useEffect(() => {
-    fetch(`/api/trip/${tripId}/votes?voteType=itinerary`)
-      .then(r => r.json())
-      .then((data: { value: string }[]) => {
-        const counts: Record<string, number> = {}
-        for (const v of data ?? []) counts[v.value] = (counts[v.value] ?? 0) + 1
-        setVoteCounts(counts)
-        // Pre-fill if myMember already voted
-        const myVote = myMember
-          ? data.find((v: { member_id?: string; value: string }) =>
-              (v as { member_id?: string }).member_id === myMember.id
-            )
-          : null
-        if (myVote) setVoted(myVote.value)
-      })
-      .catch(() => {})
-  }, [tripId, myMember])
-
   async function handleVote(label: string) {
     if (!myMember || voting || voted) return
     setVoting(true)
-    await fetch('/api/trip/vote', {
+    setVoteError(null)
+    const res = await fetch('/api/trip/vote', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tripId, memberId: myMember.id, voteType: 'itinerary', value: label }),
     })
+    if (res.status === 403) {
+      const { error } = await res.json().catch(() => ({ error: 'Voting closed' }))
+      setVoteError(error)
+      setVoting(false)
+      return
+    }
     // Optimistic update
     setVoted(label)
     setVoteCounts(prev => ({ ...prev, [label]: (prev[label] ?? 0) + 1 }))
     setVoting(false)
-    setExpanded(null)  // collapse after voting — the 🔥 badge is now the confirmation
+    setExpanded(null)
   }
 
   return (
     <Card title="🗺 Sample plans">
-      <div className="space-y-3">
+      {voteError && (
+        <div className="mb-3 px-3 py-2 rounded-xl text-xs font-semibold" style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+          🔒 {voteError}
+        </div>
+      )}
+      <VoteDeadlineBanner deadline={trip.vote_deadline ?? null} />
+      <div className="space-y-3 mt-3">
         {plans.map(plan => {
           const meta = PLAN_META[plan.label] ?? { emoji: '📋' }
           const isExpanded = expanded === plan.label
@@ -931,7 +1095,7 @@ function TaskAssignmentCard({ members, myMember }: { members: Member[]; myMember
 function StickyCTA({ label, href }: { label: string; href: string }) {
   const isExternal = href.startsWith('http')
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-5 py-4">
+    <div className="fixed bottom-0 left-0 right-0 px-5 py-4" style={{ background: 'var(--background)', borderTop: '1px solid var(--card-border)' }}>
       <a
         href={href}
         target={isExternal ? '_blank' : undefined}
@@ -954,26 +1118,33 @@ export default function TripDashboard({ params }: { params: Promise<{ tripId: st
   const [forYou, setForYou] = useState<ForYouCallout[]>([])
   const [brownieEvents, setBrownieEvents] = useState<{ event_type: string; points_earned: number }[]>([])
   const [loading, setLoading] = useState(true)
+  // Ref keeps current memberId available inside realtime callbacks without recreating the channel
+  const memberIdRef = useRef<string | null>(null)
+
+  async function loadData(memberId: string | null) {
+    try {
+      const res = await fetch(`/api/trip/${tripId}/dashboard-info`)
+      if (!res.ok) { setLoading(false); return }
+      const data = await res.json()
+
+      const myMemberData = (data.members ?? []).find((m: { id: string }) => m.id === memberId) ?? null
+      memberIdRef.current = myMemberData?.id ?? memberId
+      setTrip(data.trip)
+      setMembers(data.members ?? [])
+      setMyMember(myMemberData)
+      setTasks((data.tasks ?? []).filter((t: { member_id: string }) => t.member_id === memberId))
+      setForYou((data.forYou ?? []).filter((f: { member_id: string }) => f.member_id === memberId))
+      setBrownieEvents((data.brownieEvents ?? []).filter((e: { member_id: string }) => e.member_id === memberId))
+    } catch { /* fall through — trip state stays null, shows error screen */ }
+    setLoading(false)
+  }
 
   useEffect(() => {
     const stored = localStorage.getItem(`ts_member_${tripId}`)
-    loadData(stored ?? null)
+    memberIdRef.current = stored ?? null
+    async function init() { await loadData(stored ?? null) }
+    init()
   }, [tripId])
-
-  async function loadData(memberId: string | null) {
-    const res = await fetch(`/api/trip/${tripId}/dashboard-info`)
-    if (!res.ok) { setLoading(false); return }
-    const data = await res.json()
-
-    const myMemberData = (data.members ?? []).find((m: { id: string }) => m.id === memberId) ?? null
-    setTrip(data.trip)
-    setMembers(data.members ?? [])
-    setMyMember(myMemberData)
-    setTasks((data.tasks ?? []).filter((t: { member_id: string }) => t.member_id === memberId))
-    setForYou((data.forYou ?? []).filter((f: { member_id: string }) => f.member_id === memberId))
-    setBrownieEvents((data.brownieEvents ?? []).filter((e: { member_id: string }) => e.member_id === memberId))
-    setLoading(false)
-  }
 
   useEffect(() => {
     const channel = supabase
@@ -981,11 +1152,11 @@ export default function TripDashboard({ params }: { params: Promise<{ tripId: st
       .on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `id=eq.${tripId}` },
         payload => setTrip(payload.new as Trip))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'members', filter: `trip_id=eq.${tripId}` },
-        () => loadData(myMember?.id ?? null))
+        () => loadData(memberIdRef.current))
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
-  }, [tripId, myMember?.id])
+  }, [tripId])
 
   if (loading) {
     return (
@@ -998,7 +1169,33 @@ export default function TripDashboard({ params }: { params: Promise<{ tripId: st
     )
   }
 
-  if (!trip) return <div className="min-h-dvh flex items-center justify-center"><p>Trip not found</p></div>
+  if (!trip) return (
+    <div className="min-h-dvh flex flex-col items-center justify-center px-5 text-center">
+      <div className="text-4xl mb-3">🔍</div>
+      <p className="font-semibold mb-1">Trip not found</p>
+      <p className="text-sm" style={{ color: 'var(--muted)' }}>The link may be invalid or the trip was cancelled.</p>
+    </div>
+  )
+
+  if (trip && !myMember && !loading) {
+    const router2 = { push: (href: string) => { window.location.href = href } }
+    return (
+      <div className="min-h-dvh flex flex-col items-center justify-center px-5 text-center safe-top safe-bottom">
+        <div className="text-4xl mb-3">🔗</div>
+        <h1 className="text-xl font-bold mb-1">Not recognised</h1>
+        <p className="text-sm mb-5" style={{ color: 'var(--muted)' }}>
+          We can&apos;t find your profile for <strong>{trip.name}</strong>. Use your original invite link or rejoin below.
+        </p>
+        <button
+          onClick={() => router2.push(`/join/${trip.id}`)}
+          className="px-6 py-3 rounded-2xl font-bold text-sm"
+          style={{ background: 'linear-gradient(135deg, #7c3aed, #db2777)', color: '#fff', boxShadow: '0 4px 16px rgba(124,58,237,0.3)' }}
+        >
+          Rejoin trip →
+        </button>
+      </div>
+    )
+  }
 
   const activeCount = members.filter(m => m.status === 'active').length
   const totalCount = members.filter(m => !['declined', 'dropped'].includes(m.status)).length
@@ -1021,13 +1218,19 @@ export default function TripDashboard({ params }: { params: Promise<{ tripId: st
         return myMember.status === 'avatar_selected'
           ? { label: 'Set your budget', href: `/preferences/${tripId}/${myMember.id}` }
           : null
+      case 'destination_vote':
+        return myMember.status !== 'active'
+          ? { label: 'Vote on destination ↑', href: `#vote` }
+          : null
       case 'hotel_vote':
       case 'hotel_tiebreaker':
         return { label: 'Pick your hotel', href: `/hotels/${tripId}` }
       case 'itinerary_preferences':
         return { label: 'Complete preferences (2 min)', href: `/preferences/${tripId}/${myMember.id}` }
       case 'locked':
-        return trip.confirmed_hotel ? { label: 'Book hotel', href: trip.confirmed_hotel.booking_url } : null
+        return trip.confirmed_hotel?.booking_url
+          ? { label: 'Book hotel', href: trip.confirmed_hotel.booking_url }
+          : null
       default:
         return null
     }
@@ -1060,7 +1263,7 @@ export default function TripDashboard({ params }: { params: Promise<{ tripId: st
             )}
             {trip.status === 'itinerary_vote'
               ? <ItineraryPlansCard trip={trip} myMember={myMember} tripId={tripId} />
-              : <VotingCard trip={trip} tripId={tripId} />
+              : <VotingCard trip={trip} tripId={tripId} myMember={myMember} />
             }
             <SocialProofCard members={members} />
           </>

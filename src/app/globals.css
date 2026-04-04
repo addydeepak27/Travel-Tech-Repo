@@ -1,24 +1,43 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0a0a0a;
-  --foreground: #f5f5f5;
-  --card: #141414;
-  --card-border: #2a2a2a;
-  --accent: #6366f1;
-  --accent-hover: #4f46e5;
-  --accent-muted: rgba(99, 102, 241, 0.15);
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --muted: #666;
+  --background: #fafaf8;
+  --foreground: #1c1917;
+  --card: #ffffff;
+  --card-border: #ede9fe;
+  --accent: #7c3aed;
+  --accent-hover: #6d28d9;
+  --accent-muted: rgba(124, 58, 237, 0.08);
+  --success: #059669;
+  --warning: #d97706;
+  --muted: #78716c;
+  --input-border: #d1d5db;
+  --hero-gradient: linear-gradient(150deg, #1a0040 0%, #5b21b6 45%, #be185d 85%, #f97316 100%);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
   margin: 0;
   -webkit-font-smoothing: antialiased;
+}
+
+.card-elevated {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 24px rgba(124,58,237,0.07);
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #7c3aed, #db2777);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #7c3aed, #db2777);
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(124,58,237,0.35);
 }
 
 * {
@@ -32,9 +51,24 @@ button, a, [role="button"] {
   cursor: pointer;
 }
 
-/* Prevent zoom on input focus on iOS */
+/* All inputs: always dark text, always visible border, light color scheme */
 input, select, textarea {
   font-size: 16px;
+  color: var(--foreground);
+  color-scheme: light;
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+/* Date/month inputs: force dark text so the value is always visible */
+input[type="date"],
+input[type="month"],
+input[type="time"] {
+  color: var(--foreground);
+  color-scheme: light;
 }
 
 .safe-bottom {
