@@ -320,3 +320,26 @@
 ## Session: 2026-04-04 11:12
 **Changed:** src/app/api/trip/[tripId]/self-join/route.ts src/app/api/trip/create/route.ts src/app/api/trip/vote/route.ts src/app/avatar/[tripId]/[memberId]/page.tsx src/app/globals.css src/app/hotels/[tripId]/page.tsx src/app/itinerary/[tripId]/page.tsx src/app/join/[tripId]/page.tsx src/app/organizer/[tripId]/page.tsx src/app/page.tsx 
 **Recent commits:** f587c38 session log: 2026-04-04 11:11 08125ab session log: 2026-04-03 23:04 d9e1e7b session log: 2026-04-03 23:03 
+
+## Session: 2026-04-04 (edge-case audit + ESLint fix pass)
+**Commit:** cb108be fix: resolve all ESLint errors across user journey pages
+**Changed:** src/app/trip/[tripId]/page.tsx src/app/trip/[tripId]/vibes/page.tsx src/app/organizer/[tripId]/page.tsx src/app/page.tsx src/app/preferences/[tripId]/[memberId]/page.tsx src/app/hotels/[tripId]/page.tsx src/app/itinerary/[tripId]/page.tsx src/app/join/[tripId]/page.tsx src/app/avatar/[tripId]/[memberId]/page.tsx src/app/api/member/avatar/route.ts src/app/api/trip/[tripId]/consent/route.ts supabase/migrations/008_vote_deadline.sql
+
+**Bugs fixed:**
+- Hotels + itinerary pages rewritten — were using anon Supabase client (RLS blocked all reads)
+- Hotel vote deadline bypass — replaced direct supabase upsert with POST /api/trip/vote
+- Destination voting UI completely absent from member dashboard — added full VotingCard with progress bars, realtime, 403 handling
+- Realtime vote subscriptions: hotel votes, itinerary votes, destination votes
+- Infinite spinners from missing setLoading(false) in null-data branches
+- Avatar save silent failure; preferences "You're all set!" shown on error
+- Realtime closure bug in trip dashboard (stale memberId) fixed with useRef
+- Join page missing budget_submitted from "already responded" check
+
+**ESLint errors fixed (0 errors, clean build):**
+- Rules of Hooks: early return moved after all hooks in ItineraryPlansCard
+- Sync setState in effect: loadData wrapped in async init() IIFE
+- Date.now() in render: replaced with useState lazy initializers in page.tsx
+- Organizer cascading renders: lazy useState initializer replaces useState+useEffect
+- Card component inside render (vibes): moved to module scope
+- DonutChart cumulative mutation: pre-computed cumulatives array
+- Unescaped apostrophes: fixed across preferences, trip dashboard, avatar pages
