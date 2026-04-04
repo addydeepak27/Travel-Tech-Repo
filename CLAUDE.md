@@ -455,3 +455,7 @@
 ## Session: 2026-04-04 21:16
 **Changed:** src/app/organizer/[tripId]/page.tsx src/app/page.tsx src/app/api/trip/[tripId]/invite/ 
 **Recent commits:** 03e94fc session log: 2026-04-04 21:13 fe768e8 session log: 2026-04-04 21:09 83f31f4 session log: 2026-04-04 invited user audit + date picker fix 
+
+## Session: 2026-04-04 21:24
+**Changed:** src/app/api/trip/[tripId]/join-info/route.ts src/app/join/[tripId]/page.tsx src/app/organizer/[tripId]/page.tsx src/app/page.tsx src/app/api/trip/[tripId]/invite/ 
+**Recent commits:** 38c2589 session log: 2026-04-04 21:16 03e94fc session log: 2026-04-04 21:13 fe768e8 session log: 2026-04-04 21:09 
