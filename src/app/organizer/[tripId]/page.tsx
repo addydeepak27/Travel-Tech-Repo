@@ -99,7 +99,8 @@ interface TripData {
   name: string
   status: string
   organizer_id: string
-  destination_options: string[]
+  travel_code: string
+  destination_options: { name: string; emoji?: string }[] | string[]
   confirmed_destination: string | null
   confirmed_hotel: Hotel | null
   hotel_options: Hotel[] | null
@@ -170,6 +171,25 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
   const [nudgingIds, setNudgingIds] = useState<Set<string>>(new Set())
   const [tipsVisible, setTipsVisible] = useState(false)
   const [alertDismissed, setAlertDismissed] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  function copyInviteLink() {
+    const url = `${window.location.origin}/join/${tripId}`
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }).catch(() => {
+      // fallback for older browsers
+      const el = document.createElement('input')
+      el.value = url
+      document.body.appendChild(el)
+      el.select()
+      document.execCommand('copy')
+      document.body.removeChild(el)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
 
   useEffect(() => {
 
@@ -272,10 +292,14 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
 
   const activeMembers = members.filter(m => ['consented', 'avatar_selected', 'budget_submitted', 'active'].includes(m.status))
   const nonResponders = members.filter(m => m.status === 'invited')
-  // Multiple members can pick the same avatar — group all by avatar key
+  const organizerMember = members.find(m => m.id === trip.organizer_id) ?? null
+  const organizerNeedsPrefs = organizerMember?.budget_tier === null
+
+  // Non-planner role claim map (planner is always the organiser's role)
+  const NON_PLANNER_ROLES: AvatarType[] = ['navigator', 'budgeteer', 'foodie', 'adventure_seeker', 'photographer', 'spontaneous_one']
   const avatarClaimMap = new Map<AvatarType, TripMember[]>()
   for (const m of members) {
-    if (!m.avatar) continue
+    if (!m.avatar || m.avatar === 'planner') continue
     const key = m.avatar as AvatarType
     if (!avatarClaimMap.has(key)) avatarClaimMap.set(key, [])
     avatarClaimMap.get(key)!.push(m)
@@ -350,6 +374,47 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
 
             {/* Vote deadline banner */}
             {trip.vote_deadline && <DeadlineBanner deadline={trip.vote_deadline} />}
+
+            {/* Invite & share card — always visible */}
+            <div className="p-4 rounded-2xl bg-white" style={{ border: '1.5px solid var(--accent)', background: 'rgba(124,58,237,0.03)' }}>
+              <p className="text-xs font-semibold tracking-wide uppercase mb-2" style={{ color: 'var(--accent)' }}>Share with your squad</p>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-2xl font-black tracking-widest" style={{ color: 'var(--foreground)', fontFamily: 'monospace' }}>{trip.travel_code}</span>
+                <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}>Travel code</span>
+              </div>
+              <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
+                Share the link below or give them the code to enter at the home page.
+              </p>
+              <button
+                onClick={copyInviteLink}
+                className="w-full py-2.5 rounded-xl text-sm font-bold transition-all"
+                style={{ background: copied ? 'var(--success)' : 'linear-gradient(135deg, #7c3aed, #db2777)', color: '#fff' }}
+              >
+                {copied ? '✓ Copied!' : 'Copy invite link'}
+              </button>
+            </div>
+
+            {/* Organiser needs to fill their own preferences */}
+            {organizerNeedsPrefs && organizerId && (
+              <div className="p-4 rounded-2xl" style={{ background: 'rgba(217,119,6,0.08)', border: '1.5px solid rgba(217,119,6,0.3)' }}>
+                <div className="flex items-start gap-3">
+                  <span className="text-xl flex-shrink-0">📝</span>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold">You haven&apos;t filled your preferences</p>
+                    <p className="text-xs mt-0.5 mb-3" style={{ color: 'var(--muted)' }}>
+                      Your budget + vibe feeds into the group plan. Takes 60 seconds.
+                    </p>
+                    <a
+                      href={`/preferences/${tripId}/${organizerId}`}
+                      className="inline-flex items-center gap-1 px-4 py-2 rounded-xl text-xs font-bold"
+                      style={{ background: '#d97706', color: '#fff' }}
+                    >
+                      Fill my preferences →
+                    </a>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Budget alert */}
             {budgetAlert && !alertDismissed && (
@@ -436,11 +501,11 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
               </div>
             )}
 
-            {/* Avatar claims */}
+            {/* Avatar claims — non-planner roles only */}
             <div>
-              <SectionLabel>Avatar claims ({claimedCount}/{Object.keys(AVATAR_META).length})</SectionLabel>
+              <SectionLabel>Roles claimed ({claimedCount}/6)</SectionLabel>
               <div className="grid grid-cols-2 gap-2">
-                {(Object.keys(AVATAR_META) as AvatarType[]).map(key => {
+                {NON_PLANNER_ROLES.map(key => {
                   const meta = AVATAR_META[key]
                   const claimants = avatarClaimMap.get(key) ?? []
                   const claimed = claimants.length > 0
@@ -634,11 +699,21 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
                 <p className="text-xs font-semibold tracking-wide uppercase mb-1" style={{ color: 'var(--accent)' }}>Destination</p>
                 <p className="text-xl font-bold">{trip.confirmed_destination}</p>
               </div>
-            ) : (
+            ) : trip.status === 'destination_vote' ? (
               <div className="p-6 rounded-2xl bg-white text-center" style={{ border: '1px solid var(--card-border)' }}>
                 <p className="text-3xl mb-2">🗳</p>
                 <p className="text-sm font-medium">Destination vote in progress</p>
                 <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>Results lock at 70% participation or deadline</p>
+              </div>
+            ) : (
+              <div className="p-6 rounded-2xl bg-white text-center" style={{ border: '1px solid var(--card-border)' }}>
+                <p className="text-3xl mb-2">👥</p>
+                <p className="text-sm font-medium">Gathering the squad first</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>
+                  {['inviting','avatar_collection','budget_collection'].includes(trip.status)
+                    ? 'Destination voting opens once everyone has filled their preferences.'
+                    : 'Trip is being set up.'}
+                </p>
               </div>
             )}
 
@@ -683,9 +758,13 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
               </div>
             ) : trip.confirmed_destination ? (
               <div className="p-6 rounded-2xl bg-white text-center" style={{ border: '1px solid var(--card-border)' }}>
-                <p className="text-3xl mb-2">🗺</p>
-                <p className="text-sm font-medium">Itinerary coming soon</p>
-                <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>Unlocks after hotel is confirmed</p>
+                <p className="text-3xl mb-2">🏨</p>
+                <p className="text-sm font-medium">
+                  {trip.status === 'hotel_vote' ? 'Hotel vote in progress' : 'Itinerary coming soon'}
+                </p>
+                <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>
+                  {trip.status === 'hotel_vote' ? 'Results lock at 70% participation or deadline' : 'Unlocks after hotel is confirmed'}
+                </p>
               </div>
             ) : null}
           </div>
@@ -700,9 +779,9 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
               .sort((a, b) => (b.brownie_points ?? 0) - (a.brownie_points ?? 0))
               .map((m, idx) => {
                 const avatarMeta = m.avatar ? AVATAR_META[m.avatar] : null
-                const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `${idx + 1}`
                 const isInactive = m.status === 'invited'
                 const pts = m.brownie_points ?? 0
+                const medal = pts > 0 ? (idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `${idx + 1}`) : `${idx + 1}`
                 const statusInfo = MEMBER_STATUS_LABELS[m.status]
                 return (
                   <div
@@ -751,27 +830,35 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
               })}
 
             {/* Brownie points legend — same as user dashboard */}
-            <div className="p-3 rounded-2xl bg-white mt-2" style={{ border: '1px solid var(--card-border)' }}>
-              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--accent)' }}>HOW POINTS WORK</p>
-              <div className="space-y-1">
-                {[
-                  { label: 'Accepted the invite',       event: 'trip_accepted' },
-                  { label: 'Picked their role',         event: 'avatar_selected' },
-                  { label: 'Shared their vibe',         event: 'questionnaire_completed' },
-                  { label: 'Voted on destination',      event: 'destination_voted' },
-                  { label: 'Picked a hotel',            event: 'hotel_voted' },
-                  { label: 'Approved the plan',         event: 'itinerary_voted' },
-                ].map(({ label }) => (
-                  <div key={label} className="flex items-center justify-between text-xs">
-                    <span style={{ color: 'var(--muted)' }}>{label}</span>
-                    <span style={{ color: 'var(--accent)' }}>+pts</span>
+            {(() => {
+              const squadSize = members.filter(m => !['declined', 'dropped'].includes(m.status)).length
+              return (
+                <div className="p-3 rounded-2xl bg-white mt-2" style={{ border: '1px solid var(--card-border)' }}>
+                  <p className="text-xs font-semibold mb-2" style={{ color: 'var(--accent)' }}>HOW POINTS WORK</p>
+                  <div className="space-y-1">
+                    {[
+                      'Accepted the invite',
+                      'Picked their role',
+                      'Shared their vibe',
+                      'Voted on destination',
+                      'Picked a hotel',
+                      'Approved the plan',
+                    ].map(label => (
+                      <div key={label} className="flex items-center justify-between text-xs">
+                        <span style={{ color: 'var(--muted)' }}>{label}</span>
+                        <span className="font-semibold" style={{ color: 'var(--accent)' }}>
+                          +{squadSize} pts
+                          {squadSize > 1 && <span style={{ color: 'var(--muted)', fontWeight: 400 }}> (last: +1)</span>}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-              <p className="text-xs mt-2" style={{ color: 'var(--muted)' }}>
-                Earlier responders earn more. First = squad size pts, last = 1 pt.
-              </p>
-            </div>
+                  <p className="text-xs mt-2" style={{ color: 'var(--muted)' }}>
+                    Each action is independent — first to do it earns +{squadSize} pts, last earns +1 pt.
+                  </p>
+                </div>
+              )
+            })()}
           </div>
         )}
       </div>

@@ -675,10 +675,17 @@ function NextMoveCard({
 }) {
   const router = useRouter()
 
+  const needsPrefs = myMember?.budget_tier === null
   const stateConfig: Record<string, { primary: string; supporting: string; linkLabel?: string; linkHref?: string }> = {
     inviting: {
-      primary: `Invite your squad (${members.filter(m => m.status !== 'invited').length}/${members.length} joined)`,
-      supporting: 'Share the link to get everyone in before the vote opens.',
+      primary: needsPrefs
+        ? 'Fill your preferences while the squad joins'
+        : `Invite your squad (${members.filter(m => m.status !== 'invited').length}/${members.length} joined)`,
+      supporting: needsPrefs
+        ? 'Takes 2 min. Helps the AI build a plan everyone actually wants.'
+        : 'Share the link to get everyone in before the vote opens.',
+      linkLabel: needsPrefs ? 'Start questionnaire →' : undefined,
+      linkHref: needsPrefs && myMember ? `/preferences/${tripId}/${myMember.id}` : undefined,
     },
     avatar_collection: {
       primary: 'Squad is picking roles',
@@ -878,24 +885,26 @@ function LeaderboardCard({ members, myMember }: { members: Member[]; myMember: M
 
   return (
     <Card title="🏆 Leaderboard">
-      <div className="-mx-4 -mb-4 overflow-hidden">
+      <div className="-mx-4 overflow-hidden">
         {sorted.map((m, i) => {
           const meta = m.avatar ? AVATAR_META[m.avatar] : null
           const isMe = m.id === myMember?.id
-          const rank = RANK_MEDALS[i] ?? `${i + 1}`
+          const pts = m.brownie_points ?? 0
+          // Only award medals for pts > 0; everyone at 0 just gets a rank number
+          const rank = pts > 0 ? (RANK_MEDALS[i] ?? `${i + 1}`) : `${i + 1}`
 
           return (
             <div
               key={m.id}
               className={`flex items-center gap-3 px-4 py-3 ${isMe ? 'bg-indigo-50' : ''}`}
-              style={{ borderBottom: i < sorted.length - 1 ? '1px solid #f3f4f6' : undefined }}
+              style={{ borderBottom: '1px solid #f3f4f6' }}
             >
               <span className="text-sm font-bold w-5 text-center text-gray-400">{rank}</span>
               <span className="text-xl">{meta?.icon ?? '👤'}</span>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
                   <span className={`text-sm font-medium truncate ${isMe ? 'text-indigo-600' : ''}`}>
-                    {isMe ? 'You' : (meta?.label ?? 'Member')}
+                    {isMe ? 'You' : (m.name ?? meta?.label ?? 'Member')}
                   </span>
                   {isMe && isLate && (
                     <span className="text-xs text-amber-500 shrink-0">(late 😬)</span>
@@ -903,11 +912,36 @@ function LeaderboardCard({ members, myMember }: { members: Member[]; myMember: M
                 </div>
               </div>
               <span className={`font-bold text-sm shrink-0 ${isMe ? 'text-indigo-500' : 'text-gray-400'}`}>
-                {m.brownie_points ?? 0} pts
+                {pts} pts
               </span>
             </div>
           )
         })}
+      </div>
+      {/* HOW POINTS WORK legend */}
+      <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--card-border)' }}>
+        <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>HOW POINTS WORK</p>
+        <div className="space-y-1">
+          {[
+            'Accept invite',
+            'Pick your role',
+            'Share your vibe',
+            'Vote on destination',
+            'Pick a hotel',
+            'Approve the plan',
+          ].map(label => (
+            <div key={label} className="flex items-center justify-between text-xs">
+              <span style={{ color: 'var(--muted)' }}>{label}</span>
+              <span className="font-semibold" style={{ color: 'var(--accent)' }}>
+                +{eligible.length} pts
+                {eligible.length > 1 && <span style={{ color: 'var(--muted)', fontWeight: 400 }}> (last: +1)</span>}
+              </span>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs mt-2" style={{ color: 'var(--muted)' }}>
+          First to each action earns +{eligible.length} pts. Every action is independent.
+        </p>
       </div>
     </Card>
   )
@@ -1209,15 +1243,19 @@ export default function TripDashboard({ params }: { params: Promise<{ tripId: st
 
   const ctaConfig = (() => {
     if (!myMember) return null
+    const needsPreferences = myMember.budget_tier === null && trip.status !== 'locked'
+    const preferencesHref = `/preferences/${tripId}/${myMember.id}`
     switch (trip.status) {
       case 'avatar_collection':
-        return ['consented', 'invited'].includes(myMember.status)
-          ? { label: 'Pick your role', href: `/avatar/${tripId}/${myMember.id}` }
-          : null
+        if (['consented', 'invited'].includes(myMember.status))
+          return { label: 'Pick your role', href: `/avatar/${tripId}/${myMember.id}` }
+        if (needsPreferences)
+          return { label: 'Fill your preferences →', href: preferencesHref }
+        return null
       case 'budget_collection':
-        return myMember.status === 'avatar_selected'
-          ? { label: 'Set your budget', href: `/preferences/${tripId}/${myMember.id}` }
-          : null
+        if (myMember.status === 'avatar_selected' || needsPreferences)
+          return { label: 'Set your budget', href: preferencesHref }
+        return null
       case 'destination_vote':
         return myMember.status !== 'active'
           ? { label: 'Vote on destination ↑', href: `#vote` }
@@ -1226,13 +1264,16 @@ export default function TripDashboard({ params }: { params: Promise<{ tripId: st
       case 'hotel_tiebreaker':
         return { label: 'Pick your hotel', href: `/hotels/${tripId}` }
       case 'itinerary_preferences':
-        return { label: 'Complete preferences (2 min)', href: `/preferences/${tripId}/${myMember.id}` }
+        return { label: 'Complete preferences (2 min)', href: preferencesHref }
       case 'locked':
         return trip.confirmed_hotel?.booking_url
           ? { label: 'Book hotel', href: trip.confirmed_hotel.booking_url }
           : null
       default:
-        return null
+        // inviting + any other early status: prompt unfilled members to set preferences
+        return needsPreferences
+          ? { label: 'Fill your preferences →', href: preferencesHref }
+          : null
     }
   })()
 

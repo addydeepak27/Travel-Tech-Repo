@@ -22,7 +22,13 @@ export async function sendEmail(to: string, subject: string, body: string): Prom
     body: JSON.stringify({ from: FROM, to: [to], subject, text: body }),
   })
 
+  const responseText = await res.text()
   if (!res.ok) {
-    console.error('[Email] Send failed:', await res.text())
+    console.error(`[Email] Send FAILED to=${to} status=${res.status}:`, responseText)
+    // Resend test-domain restriction: onboarding@resend.dev can only send to your Resend account email.
+    // If you see a 403 here, either verify a custom domain at resend.com/domains
+    // or set RESEND_FROM to a verified sending address.
+  } else {
+    console.log(`[Email] Sent OK to=${to} subject="${subject}"`, responseText)
   }
 }

@@ -2,24 +2,51 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase'
 
 export async function POST(req: NextRequest) {
-  const { memberId, avatar } = await req.json()
+  const { memberId, avatar, name } = await req.json()
   if (!memberId || !avatar) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
 
   const db = createServiceClient()
 
-  // Update avatar + status
-  const { data: member, error } = await db
+  // 1. Get member's trip_id and current brownie_points
+  const { data: member, error: memberError } = await db
     .from('members')
-    .update({ avatar, status: 'avatar_selected' })
-    .eq('id', memberId)
     .select('trip_id, brownie_points')
+    .eq('id', memberId)
     .single()
 
-  if (error || !member) return NextResponse.json({ error: error?.message ?? 'Not found' }, { status: 500 })
+  if (memberError || !member) return NextResponse.json({ error: 'Member not found' }, { status: 404 })
 
   const tripId = member.trip_id
 
-  // Check if this event already awarded for this member (idempotent)
+  // 2. Check avatar availability — block duplicates only until all 6 non-planner roles are claimed
+  const NON_PLANNER_ROLES = ['navigator', 'budgeteer', 'foodie', 'adventure_seeker', 'photographer', 'spontaneous_one']
+  const { data: allAvatars } = await db
+    .from('members')
+    .select('avatar')
+    .eq('trip_id', tripId)
+    .not('avatar', 'is', null)
+    .neq('avatar', 'planner')
+    .neq('id', memberId)
+
+  const claimedRoles = new Set((allAvatars ?? []).map((m: { avatar: string }) => m.avatar))
+  const allRolesClaimed = NON_PLANNER_ROLES.every(r => claimedRoles.has(r))
+
+  if (!allRolesClaimed && claimedRoles.has(avatar)) {
+    return NextResponse.json({ error: 'avatar_taken' }, { status: 409 })
+  }
+
+  // 3. Update avatar + status + name (if provided)
+  const updateFields: Record<string, unknown> = { avatar, status: 'avatar_selected' }
+  if (name?.trim()) updateFields.name = name.trim()
+
+  const { error: updateError } = await db
+    .from('members')
+    .update(updateFields)
+    .eq('id', memberId)
+
+  if (updateError) return NextResponse.json({ error: 'Update failed' }, { status: 500 })
+
+  // 4. Award brownie points (idempotent)
   const { data: existing } = await db
     .from('brownie_events')
     .select('id')
@@ -29,7 +56,6 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   if (!existing) {
-    // Rank = how many have already earned this event
     const { count: priorCount } = await db
       .from('brownie_events')
       .select('id', { count: 'exact', head: true })

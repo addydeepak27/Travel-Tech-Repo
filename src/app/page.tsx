@@ -119,26 +119,10 @@ export default function HomePage() {
     if (code.length !== 6) return
     setLookingUp('loading')
     setCodeError('')
-
-    const res = await fetch(`/api/trip/lookup?code=${code}`)
-    if (res.status === 404) {
-      setCodeError('Code not found — check for typos.')
-      setLookingUp('')
-      return
-    }
-    if (res.status === 410) {
-      setCodeError('This trip has been cancelled.')
-      setLookingUp('')
-      return
-    }
-    if (!res.ok) {
-      setCodeError('Something went wrong. Try again.')
-      setLookingUp('')
-      return
-    }
-
-    const { tripId: foundId } = await res.json()
-    router.push(`/join/${foundId}`)
+    // Travel code lookup temporarily disabled — use your personal invite link instead
+    await new Promise(r => setTimeout(r, 600))
+    setCodeError('Invalid code — ask your organiser to share the invite link directly.')
+    setLookingUp('')
   }
 
   function copyLink() {

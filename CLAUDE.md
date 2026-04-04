@@ -391,3 +391,25 @@
 ## Session: 2026-04-04 12:15
 **Changed:** src/app/api/member/avatar/route.ts src/app/join/[tripId]/page.tsx src/app/organizer/[tripId]/page.tsx src/app/page.tsx src/app/trip/[tripId]/page.tsx src/lib/email.ts 
 **Recent commits:** 878193d session log: 2026-04-04 12:12 beeb390 session log: 2026-04-04 12:11 42fc669 session log: 2026-04-04 12:10 
+
+## Session: 2026-04-04 (invited user audit + organizer dashboard fixes)
+**Commit:** TBD
+**Changed:** src/app/api/member/avatar/route.ts src/app/join/[tripId]/page.tsx src/app/organizer/[tripId]/page.tsx src/app/page.tsx src/app/trip/[tripId]/page.tsx src/lib/email.ts
+
+**Bugs fixed:**
+- Member name never saved — avatar route now accepts + saves `name`; join page shows required name/nickname input
+- Avatar conflict returned raw DB constraint error — route pre-checks availability, returns clean 409 `avatar_taken`
+- Taken avatars not shown in join UI — loads from joinInfo on mount, shows "Taken" badge, grays out buttons
+- Avatar sharing for squads > 6 — once all 6 roles claimed, route allows duplicates; UI shows "+1 joining" badge + "All roles filled" banner
+- Organizer dashboard: travel code not visible — added code + "Copy invite link" button to Monitor tab
+- Organizer dashboard: no preferences prompt — amber card shown when organizer `budget_tier === null`
+- Organizer dashboard: avatar claims showed /7 — fixed to /6 using NON_PLANNER_ROLES array
+- Organizer dashboard: Plan tab showed wrong state — status-aware messages for inviting/voting/hotel stages
+- HOW POINTS WORK showed static "+pts" — now shows live "+N pts (last: +1)" based on squad size on both dashboards
+- LeaderboardCard on member dashboard: added HOW POINTS WORK breakdown
+- Email logging: added [Email] Sent OK / Send FAILED to surface Resend 403s (test domain restriction)
+
+**UX changes:**
+- Name input: "Your name or squad nickname" placeholder; required before avatar can be selected
+- Brownie points gift teaser: upgraded to gradient card with 🎁 headline "Brownie points = real gifts"
+- Travel code lookup: temporarily disabled (always returns invalid; re-enable in lookupCode() in page.tsx)
