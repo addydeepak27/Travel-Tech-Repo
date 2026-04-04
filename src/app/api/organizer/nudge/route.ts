@@ -34,22 +34,30 @@ export async function POST(req: NextRequest) {
   let subject = ''
   let message = ''
 
+  // Fetch organizer name for the jokes
+  const { data: organizerMember } = await db
+    .from('members')
+    .select('name')
+    .eq('id', organizerId)
+    .single()
+  const orgName = organizerMember?.name ?? 'your organizer'
+
   switch (nudgeType ?? member.status) {
     case 'invited':
-      subject = `${trip.name} is waiting on you — 1 tap to join`
-      message = `${trip.name} is waiting on you.\n\nJoin here → ${appUrl}/join/${tripId}?m=${memberId}`
+      subject = `${orgName} is personally offended you haven't joined ${trip.name} yet 😤`
+      message = `Okay not *personally* offended. But ${orgName} did spend 20 minutes picking destinations, so... the least you could do is tap a button 😅\n\nJoin ${trip.name} → ${appUrl}/join/${tripId}?m=${memberId}\n\nTakes 30 seconds. ${orgName} will sleep better tonight.`
       break
     case 'consented':
-      subject = `${trip.name}: Roles are filling fast — pick yours`
-      message = `${trip.name}: You said yes but haven't picked your role yet — roles are filling fast.\n\nPick yours → ${appUrl}/avatar/${tripId}/${memberId}\n\n(24h before auto-assign)`
+      subject = `You said yes to ${trip.name} — now pick a role before ${orgName} panics`
+      message = `Good news: you're in! Bad news: ${orgName} is stress-checking the app every 10 minutes waiting for you to pick a role 😭\n\nTakes 5 seconds. Pick yours → ${appUrl}/avatar/${tripId}/${memberId}\n\n(${orgName} will relax. Probably.)`
       break
     case 'avatar_selected':
-      subject = `${trip.name}: Quick question before we can build the plan`
-      message = `${trip.name}: One quick thing before we can build the plan — what's your budget per person?\n\nSet your budget → ${appUrl}/preferences/${tripId}/${memberId}`
+      subject = `${trip.name} is almost ready to plan — just needs your budget 💸`
+      message = `${orgName} has been staring at an incomplete budget chart for way too long.\n\nJust 4 questions and the AI can build the full plan.\n\nFill it in → ${appUrl}/preferences/${tripId}/${memberId}\n\nSeriously, ${orgName} will buy you a drink on the trip if you do this now.`
       break
     default:
-      subject = `${trip.name} needs your input`
-      message = `${trip.name} is waiting for your input. Tap to view → ${appUrl}/trip/${tripId}`
+      subject = `${trip.name} needs you — ${orgName} said please 🙏`
+      message = `${orgName} is too polite to say it, so we will: the trip can't move forward without your input.\n\nTake a look → ${appUrl}/trip/${tripId}`
   }
 
   await sendEmail(member.email, subject, message)

@@ -248,12 +248,15 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
   }, [trip?.group_budget_zone, tripId, tips.length])
 
   async function nudge(memberId: string) {
-    if (nudgingIds.has(memberId) || !organizerId) return
+    if (nudgingIds.has(memberId)) return
+    // Use trip.organizer_id from API (not localStorage) so nudge always works
+    const realOrganizerId = trip?.organizer_id ?? organizerId
+    if (!realOrganizerId) return
     setNudgingIds(prev => new Set(prev).add(memberId))
     await fetch('/api/organizer/nudge', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tripId, memberId, organizerId }),
+      body: JSON.stringify({ tripId, memberId, organizerId: realOrganizerId }),
     })
     setTimeout(() => setNudgingIds(prev => { const s = new Set(prev); s.delete(memberId); return s }), 2000)
   }
@@ -383,7 +386,7 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
             </div>
 
             {/* Organiser needs to fill their own preferences */}
-            {organizerNeedsPrefs && organizerId && (
+            {organizerNeedsPrefs && (trip?.organizer_id ?? organizerId) && (
               <div className="p-4 rounded-2xl" style={{ background: 'rgba(217,119,6,0.08)', border: '1.5px solid rgba(217,119,6,0.3)' }}>
                 <div className="flex items-start gap-3">
                   <span className="text-xl flex-shrink-0">📝</span>
@@ -393,7 +396,7 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
                       Your budget + vibe feeds into the group plan. Takes 60 seconds.
                     </p>
                     <a
-                      href={`/preferences/${tripId}/${organizerId}`}
+                      href={`/preferences/${tripId}/${trip?.organizer_id ?? organizerId}`}
                       className="inline-flex items-center gap-1 px-4 py-2 rounded-xl text-xs font-bold"
                       style={{ background: '#d97706', color: '#fff' }}
                     >

@@ -71,8 +71,8 @@ export async function GET(req: NextRequest) {
           const organiser = (activeMembers ?? []).find((m: { id: string }) => m.id === trip.organizer_id)
           if (organiser?.email) {
             await sendEmail(organiser.email,
-              `No votes for ${trip.name} — defaulting to ${winner}`,
-              `No one voted for ${trip.name}'s ${voteType}. We've gone with ${winner} as the default. Change it from your dashboard → ${appUrl}/organizer/${trip.id}`)
+              `Zero votes on ${trip.name}'s ${voteType} — classic squad 😅`,
+              `Your squad collectively looked at the ${voteType} options for ${trip.name} and decided... to do nothing.\n\nWe've gone with ${winner} as the default. You can override it if you hate it.\n\nChange it → ${appUrl}/organizer/${trip.id}`)
           }
         } else {
           const topCount = entries[0][1]
@@ -84,8 +84,8 @@ export async function GET(req: NextRequest) {
             if (organiser?.email) {
               const opts = tied.map(([v], i) => `[${i + 1}] ${v}`).join('\n')
               await sendEmail(organiser.email,
-                `Tied vote for ${trip.name} ${voteType} — you decide`,
-                `Tied vote for ${trip.name} ${voteType}.\n\n${opts}\n\nYou decide — reply with your choice.`)
+                `Your squad couldn't agree on ${trip.name}'s ${voteType} 🤷 — your call`,
+                `Democracy has failed. It's a tie.\n\n${opts}\n\nYou're the organizer. This is your moment. Pick one → ${appUrl}/organizer/${trip.id}`)
               await db.from('trips').update({ status: `${voteType}_tiebreaker` as never }).eq('id', trip.id)
               continue
             }
@@ -131,14 +131,14 @@ export async function GET(req: NextRequest) {
         const decayedPoints = Math.max(totalActive - Math.floor(hoursOpen), 1)
 
         const subjects: Record<1 | 2 | 3, string> = {
-          1: `Reminder: ${trip.name} ${voteType} vote is still open`,
-          2: `${nonVoters.length - 1} people voted — you haven't yet`,
-          3: `Last chance — ${trip.name} vote closes soon`,
+          1: `⏳ The ${trip.name} ${voteType} vote is waiting for you`,
+          2: `Everyone voted on ${trip.name} except you 😬`,
+          3: `🚨 Final call — ${trip.name} ${voteType} vote closes soon`,
         }
         const msgs: Record<1 | 2 | 3, string> = {
-          1: `Quick reminder — ${trip.name} ${voteType} vote is still open.\n\nYou're one of ${nonVoters.length} yet to vote. Takes 5 seconds.\n\nVote here → ${appUrl}/trip/${trip.id}`,
-          2: `${nonVoters.length - 1} people voted for ${trip.name} ${voteType}. You haven't yet.\n\nIf you don't vote, the group picks without you.\n\n${decayedPoints} brownie points available if you vote now.\n\nVote here → ${appUrl}/trip/${trip.id}`,
-          3: `Last chance — ${trip.name} vote closes soon.\n\nGroup's majority pick goes forward automatically if you don't respond.\n\nVote here → ${appUrl}/trip/${trip.id}`,
+          1: `Hey! The ${voteType} vote for ${trip.name} is open and ${nonVoters.length - 1} of you haven't voted yet.\n\nYour opinion matters (and so do the brownie points 👀)\n\nVote now → ${appUrl}/trip/${trip.id}`,
+          2: `Okay this is awkward. Everyone voted on the ${voteType} for ${trip.name}... except you.\n\nNot judging. But the group is waiting.\n\n+${decayedPoints} brownie points if you vote right now → ${appUrl}/trip/${trip.id}\n\n(Points decay the longer you wait — just saying 😅)`,
+          3: `LAST CALL 🚨 The ${trip.name} ${voteType} vote closes very soon.\n\nIf you don't vote, the group's pick goes forward without your input — and you lose your chance at brownie points.\n\nVote now → ${appUrl}/trip/${trip.id}`,
         }
 
         await sendEmail(member.email, subjects[stage], msgs[stage])
@@ -173,14 +173,14 @@ export async function GET(req: NextRequest) {
     if (existing) continue
 
     const subjects: Record<1 | 2 | 3, string> = {
-      1: `Quick questions for ${trip.name} — takes 2 mins`,
-      2: `The group is waiting on your preferences for ${trip.name}`,
-      3: `Last nudge — your squad needs your input for ${trip.name}`,
+      1: `4 questions. 60 seconds. ${trip.name} is waiting ✈️`,
+      2: `Your squad is already filling in ${trip.name} details — don't get left behind`,
+      3: `⚠️ Final nudge — we need your vibe for ${trip.name}`,
     }
     const msgs: Record<1 | 2 | 3, string> = {
-      1: `Just 4 quick questions and you're all set for ${trip.name}!\n\nContinue here → ${appUrl}/preferences/${member.trip_id}/${member.id}`,
-      2: `The group is waiting on your preferences for ${trip.name}. Pick up where you left off → ${appUrl}/preferences/${member.trip_id}/${member.id}`,
-      3: `Last nudge — your squad needs your input to plan ${trip.name}. Answer 4 quick questions → ${appUrl}/preferences/${member.trip_id}/${member.id}`,
+      1: `The organizer worked hard to get this trip going. The least you can do is answer 4 questions 😅\n\nTakes 60 seconds → ${appUrl}/preferences/${member.trip_id}/${member.id}`,
+      2: `Everyone else is filling in their preferences for ${trip.name}.\n\nYou're making the organizer refresh the dashboard every 5 minutes. They need a hobby. Help them out.\n\nPick up here → ${appUrl}/preferences/${member.trip_id}/${member.id}`,
+      3: `Okay this is your last nudge, we promise.\n\nThe organizer has stress-planned this trip for days. Your 4-question input is all that's missing.\n\nDo it now → ${appUrl}/preferences/${member.trip_id}/${member.id}`,
     }
 
     await sendEmail(member.email, subjects[stage], msgs[stage])
@@ -218,8 +218,8 @@ export async function GET(req: NextRequest) {
     const { data: tripData } = await db.from('trips').select('name').eq('id', member.trip_id).single()
 
     await sendEmail(member.email,
-      `You've been assigned ${AVATAR_META[leastTaken].label} for ${tripData?.name ?? 'your trip'}`,
-      `We've given you ${AVATAR_META[leastTaken].label} for ${tripData?.name ?? 'your trip'} — you can swap it in the next 12h.\n\nChange your role → ${appUrl}/avatar/${member.trip_id}/${member.id}`)
+      `You've been auto-assigned a role for ${tripData?.name ?? 'your trip'} 🎭`,
+      `Since you didn't pick a role, we went ahead and made you ${AVATAR_META[leastTaken].label} for ${tripData?.name ?? 'your trip'}.\n\nNo hard feelings — you can swap it in the next 12h if it's not vibing.\n\nChange your role → ${appUrl}/avatar/${member.trip_id}/${member.id}\n\n(The organizer will never know 🤫)`)
   }
 
   // ── 4. Budget assumed default at T+18h ────────────────────────────────────
@@ -247,8 +247,8 @@ export async function GET(req: NextRequest) {
     }).eq('id', member.id)
 
     await sendEmail(member.email,
-      `Budget assumed for your trip — want to change it?`,
-      `We've assumed ${tierMeta.label} budget (${tierMeta.range}) for you based on your role.\n\nWant to change it? Update your budget here → ${appUrl}/preferences/${member.trip_id}/${member.id}`)
+      `We guessed your budget for ${tripData?.name ?? 'your trip'} — hope that's okay 😅`,
+      `You didn't fill in your budget preferences, so we assumed ${tierMeta.label} (${tierMeta.range}/person) based on your vibe.\n\nThe organizer didn't notice. Yet.\n\nWant to change it before they do? → ${appUrl}/preferences/${member.trip_id}/${member.id}`)
   }
 
   // ── 4b. Auto-advance destination_vote_pending → destination_vote ──────────
@@ -272,8 +272,8 @@ export async function GET(req: NextRequest) {
       if (!m.email) continue
       await sendEmail(
         m.email,
-        `🗳 Vote is open for ${trip.name} — pick your destination`,
-        `The destination vote for ${trip.name} is now open. Your vote counts — be first and earn more brownie points!\n\nVote now → ${appUrl}/trip/${trip.id}`
+        `🗳 Voting is open for ${trip.name} — be first, earn more points`,
+        `The squad is voting on where to go for ${trip.name}!\n\nFirst to vote gets the most brownie points 👀 Don't let your mates lock in the destination without you.\n\nVote now → ${appUrl}/trip/${trip.id}`
       )
     }
   }
@@ -295,8 +295,8 @@ export async function GET(req: NextRequest) {
     const organiser = (trip.members ?? []).find((m: { id: string }) => m.id === trip.organizer_id)
     if (organiser?.email) {
       await sendEmail(organiser.email,
-        `${trip.name} was auto-cancelled — no one joined`,
-        `Your trip ${trip.name} was auto-cancelled — no one joined in 48 hours. Start a new one at ${appUrl} 🌊`)
+        `${trip.name} got auto-cancelled 😬 — no one joined`,
+        `Ouch. Your trip ${trip.name} was auto-cancelled because no one joined in 48 hours.\n\nMaybe try a group chat first next time? 😅\n\nStart fresh → ${appUrl}`)
     }
   }
 
@@ -401,15 +401,15 @@ export async function GET(req: NextRequest) {
       // Notify old organizer
       await sendEmail(
         organizer.email,
-        `${newOrganizer.name} just took the wheel on ${trip.name}`,
-        `Hey ${organizer.name ?? 'there'}, since ${trip.name} was on pause, we transferred the organizer role to ${newOrganizer.name} — your most active squad member.\n\nIf you're back, reach out to your squad directly or start fresh at ${appUrl} 🌊`
+        `${newOrganizer.name} took over ${trip.name} — the squad needed a captain 🏴‍☠️`,
+        `Hey ${organizer.name ?? 'there'},\n\nYou've been AWOL for 5 days, so we handed the organizer role to ${newOrganizer.name} — the most engaged person in your squad.\n\nNo hard feelings. ${newOrganizer.name} is probably better at this anyway 😅\n\nIf you're back and want to reclaim your throne, reach out to your squad directly.`
       )
 
       // Notify new organizer
       await sendEmail(
         newOrganizer.email,
-        `You're now the organizer of ${trip.name} 🎉`,
-        `Hey ${newOrganizer.name ?? 'there'}! Your squad needed someone to step up, and you're it.\n\nYou've been made the trip organizer for "${trip.name}". Your squad is counting on you.\n\nTake the wheel → ${appUrl}/organizer/${trip.id}`
+        `Congratulations — you're the new captain of ${trip.name} 🎉`,
+        `Hey ${newOrganizer.name ?? 'there'}!\n\nThe previous organizer disappeared. Your squad needed someone responsible. They picked you.\n\nNo pressure, but the whole trip depends on you now. 😬\n\nTake the wheel → ${appUrl}/organizer/${trip.id}\n\nYou've got this.`
       )
 
       await db.from('nudges').insert({
@@ -419,8 +419,8 @@ export async function GET(req: NextRequest) {
     } else if (stage === 2) {
       await sendEmail(
         organizer.email,
-        `48h heads up — ${trip.name} needs a captain`,
-        `Hey ${organizer.name ?? 'there'}, just a heads up — if the trip doesn't get some love in the next 2 days, we'll hand the organizer role to your most engaged squad member so the trip can keep moving.\n\nStill in? Pick up where you left off → ${appUrl}/organizer/${trip.id}`
+        `⏰ 48h warning — ${trip.name} needs its organizer back`,
+        `Hey ${organizer.name ?? 'there'},\n\nYour squad is still waiting. If the trip doesn't get some love in the next 2 days, we'll hand the organizer badge to whoever's been most active.\n\nYou spent time planning this. Don't let someone else take the glory 😅\n\nPick it back up → ${appUrl}/organizer/${trip.id}`
       )
       await db.from('nudges').insert({
         trip_id: trip.id, member_id: organizer.id,
@@ -429,8 +429,8 @@ export async function GET(req: NextRequest) {
     } else {
       await sendEmail(
         organizer.email,
-        `Your squad is waiting, ${organizer.name ?? 'there'} 👀`,
-        `Hey ${organizer.name ?? 'there'}, your trip "${trip.name}" has been sitting for a few days.\n\nYour squad joined but can't move forward without you.\n\nJump back in → ${appUrl}/organizer/${trip.id}`
+        `Your squad joined ${trip.name} — now they're just... waiting 👀`,
+        `Hey ${organizer.name ?? 'there'},\n\nGood news: your squad joined the trip!\nBad news: they can't move forward without you.\n\nThe organizer (that's you) has been quiet for 3 days. Your squad is too polite to say anything. We're not.\n\nJump back in → ${appUrl}/organizer/${trip.id}`
       )
       await db.from('nudges').insert({
         trip_id: trip.id, member_id: organizer.id,
@@ -526,14 +526,14 @@ export async function GET(req: NextRequest) {
     const link = `${appUrl}/preferences/${member.trip_id}/${member.id}`
 
     const subjects: Record<1 | 2 | 3, string> = {
-      1: `${submitted} people already in for ${trip.name} — don't be last`,
-      2: `💀 It's just you — everyone's waiting for ${trip.name}`,
-      3: `🚨 Budget locked for ${trip.name} — update it before the plan is finalised`,
+      1: `${submitted} squad members locked their budget for ${trip.name} — you haven't 👀`,
+      2: `💀 It's literally just you left, ${userName}`,
+      3: `⏰ Budget window closed for ${trip.name} — here's what we assumed for you`,
     }
     const msgs: Record<1 | 2 | 3, string> = {
-      1: `Hey ${userName},\n\n${submitted} of your squad have already locked their budget for ${trip.name}.\n\n${organizerName} is refreshing waiting for the last few.\n\nTakes 30 seconds → ${link}`,
-      2: `Hey ${userName},\n\n💀 It's just you\nEveryone's waiting 😭\n${organizerName} is refreshing\n\n→ Complete now ${link}`,
-      3: `Hey ${userName},\n\nThe budget window for ${trip.name} has closed.\n\nWe've assigned you a budget based on your role. If you want to update it before the plan is finalised, do it now → ${link}`,
+      1: `Hey ${userName},\n\n${submitted} of your squad already locked their budget for ${trip.name}.\n\n${organizerName} is definitely not refreshing the dashboard every 5 minutes waiting for you. Definitely not. 😅\n\nTakes 30 seconds → ${link}`,
+      2: `Hey ${userName},\n\n💀 It's just you.\n\nEvery. Single. Person. In the squad has filled this in. The organizer (${organizerName}) has read-receipts on the dashboard and is watching.\n\nJust... do it. → ${link}`,
+      3: `Hey ${userName},\n\nThe budget window for ${trip.name} has closed.\n\nWe've assigned you a default budget based on your role — but you've got a small window to override it before the plan locks.\n\nUpdate now → ${link}`,
     }
 
     await sendEmail(member.email, subjects[effectiveStage], msgs[effectiveStage])
