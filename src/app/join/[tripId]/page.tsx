@@ -102,6 +102,7 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
   const [questionStep, setQuestionStep] = useState(0)
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
+  const [preferenceError, setPreferenceError] = useState(false)
 
   useEffect(() => {
     async function load(attempt = 0) {
@@ -163,10 +164,19 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
       })
       if (res.status === 403) { setSelfEmailError("You've declined this trip. Ask the organiser to re-invite you."); setSelfEmailLookingUp(false); return }
       if (!res.ok) { setSelfEmailError('Something went wrong — try again.'); setSelfEmailLookingUp(false); return }
-      const { memberId: mid } = await res.json()
+      const { memberId: mid, status: memberStatus } = await res.json()
       setResolvedMemberId(mid)
       try { localStorage.setItem(`ts_member_${tripId}`, mid) } catch { /* quota/private */ }
-      await doConsent(mid)
+      // Route based on existing progress — don't regress users who already completed steps
+      if (memberStatus === 'avatar_selected') {
+        setStep('questions')
+        setSelfEmailLookingUp(false)
+      } else if (['budget_submitted', 'active'].includes(memberStatus ?? '')) {
+        setAlreadyResponded('in')
+        setSelfEmailLookingUp(false)
+      } else {
+        await doConsent(mid) // new/invited/consented — proceed normally
+      }
     } catch {
       setSelfEmailError('Network error — check your connection.')
       setSelfEmailLookingUp(false)
@@ -260,7 +270,7 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
       if (!res.ok) throw new Error('Preferences save failed')
       setStep('done')
     } catch {
-      // Show last question again with a retry option — don't advance to done
+      setPreferenceError(true)
       setQuestionStep(QUESTIONS.length - 1)
     } finally {
       setSubmitting(false)
@@ -408,6 +418,12 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
                 <span className="text-lg flex-shrink-0" style={{ color: 'var(--card-border)' }}>›</span>
               </button>
             ))
+          )}
+
+          {preferenceError && !submitting && (
+            <p className="text-xs text-center mt-1" style={{ color: '#ef4444' }}>
+              Something went wrong — please try again.
+            </p>
           )}
 
           {questionStep > 0 && !submitting && (

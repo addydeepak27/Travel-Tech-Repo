@@ -37,7 +37,7 @@ export async function POST(
     if (existing.status === 'declined') {
       return NextResponse.json({ error: 'You declined this trip. Ask the organiser to re-invite you.' }, { status: 403 })
     }
-    return NextResponse.json({ memberId: existing.id })
+    return NextResponse.json({ memberId: existing.id, status: existing.status })
   }
 
   // Create new member
@@ -59,5 +59,5 @@ export async function POST(
     return NextResponse.json({ error: 'Failed to create member' }, { status: 500 })
   }
 
-  return NextResponse.json({ memberId: newMember.id })
+  return NextResponse.json({ memberId: newMember.id, status: 'invited' })
 }

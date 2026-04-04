@@ -7,6 +7,9 @@ import { AVATAR_META } from '@/types'
 import type { AvatarType } from '@/types'
 import { ACTIVE_MEMBER_STATUSES } from '@/lib/constants'
 
+// Note: supabase anon client is used ONLY for realtime subscriptions (trigger only, not data).
+// All data reads go through service-role API routes to bypass RLS.
+
 interface MemberData {
   avatar: AvatarType | null
   budget_tier: string | null
@@ -92,18 +95,15 @@ export default function VibesPage({ params }: { params: Promise<{ tripId: string
 
   useEffect(() => {
     async function load() {
-      const { data } = await supabase
-        .from('trips')
-        .select(`name, members(avatar, budget_tier, pace_vote, activity_pref, trip_priority, special_requests, status, name, brownie_points)`)
-        .eq('id', tripId)
-        .single()
-
-      if (!data) { setLoading(false); return }
-
-      setTripName(data.name)
-      const all = (data.members ?? []) as MemberData[]
-      setTotalInvited(all.length)
-      setMembers(all.filter(m => ACTIVE_MEMBER_STATUSES.includes(m.status as never)))
+      try {
+        const res = await fetch(`/api/trip/${tripId}/dashboard-info`)
+        if (!res.ok) { setLoading(false); return }
+        const data = await res.json()
+        setTripName(data.trip?.name ?? '')
+        const all = (data.members ?? []) as MemberData[]
+        setTotalInvited(all.length)
+        setMembers(all.filter((m: MemberData) => ACTIVE_MEMBER_STATUSES.includes(m.status as never)))
+      } catch { /* fall through — shows empty state */ }
       setLoading(false)
     }
     load()
