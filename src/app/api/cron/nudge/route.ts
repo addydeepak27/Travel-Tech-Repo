@@ -148,7 +148,7 @@ export async function GET(req: NextRequest) {
   }
 
   // ── 2. Questionnaire nudges ─────────────────────────────────────────────────
-  const questStates = ['consented', 'avatar_selection', 'pref_q1', 'pref_q2', 'pref_q3', 'pref_q4']
+  const questStates = ['consented', 'avatar_selected', 'avatar_selection', 'pref_q1', 'pref_q2', 'pref_q3', 'pref_q4']
   const { data: questMembers } = await db.from('members')
     .select('id, email, name, trip_id, status, updated_at, trips(name, departure_date)')
     .in('status', questStates)
@@ -224,7 +224,7 @@ export async function GET(req: NextRequest) {
 
   // ── 4. Budget assumed default at T+18h ────────────────────────────────────
   const { data: nobudget } = await db.from('members')
-    .select('id, email, trip_id, avatar, updated_at')
+    .select('id, email, trip_id, avatar, updated_at, trips(name)')
     .not('avatar', 'is', null)
     .is('budget_tier', null)
     .in('status', ['avatar_selection', 'active'])
@@ -239,6 +239,7 @@ export async function GET(req: NextRequest) {
     const avatar = member.avatar as AvatarType
     const assumedTier: BudgetTier = AVATAR_ASSUMED_BUDGET[avatar] ?? 'comfortable'
     const tierMeta = BUDGET_TIER_META[assumedTier]
+    const memberTripName = (member as unknown as { trips?: { name: string } }).trips?.name ?? 'your trip'
 
     await db.from('members').update({
       budget_tier: assumedTier,
@@ -247,7 +248,7 @@ export async function GET(req: NextRequest) {
     }).eq('id', member.id)
 
     await sendEmail(member.email,
-      `We guessed your budget for ${tripData?.name ?? 'your trip'} — hope that's okay 😅`,
+      `We guessed your budget for ${memberTripName} — hope that's okay 😅`,
       `You didn't fill in your budget preferences, so we assumed ${tierMeta.label} (${tierMeta.range}/person) based on your vibe.\n\nThe organizer didn't notice. Yet.\n\nWant to change it before they do? → ${appUrl}/preferences/${member.trip_id}/${member.id}`)
   }
 

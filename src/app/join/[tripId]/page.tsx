@@ -135,11 +135,12 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
             setAlreadyResponded('out')
           } else if (me?.status === 'consented') {
             setStep('avatar')
-          } else if (me?.status === 'avatar_selected') {
+          } else if (['avatar_selected', 'avatar_selection'].includes(me?.status ?? '')) {
             setStep('questions')
-          } else if (['budget_submitted', 'active'].includes(me?.status ?? '')) {
+          } else if (['pref_q1', 'pref_q2', 'pref_q3', 'pref_q4', 'budget_submitted', 'active'].includes(me?.status ?? '')) {
             setAlreadyResponded('in')
           }
+          // 'invited' → show landing (default)
         }
       } catch {
         if (attempt < 2) { setTimeout(() => load(attempt + 1), 800); return }
@@ -167,15 +168,19 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
       const { memberId: mid, status: memberStatus } = await res.json()
       setResolvedMemberId(mid)
       try { localStorage.setItem(`ts_member_${tripId}`, mid) } catch { /* quota/private */ }
-      // Route based on existing progress — don't regress users who already completed steps
-      if (memberStatus === 'avatar_selected') {
+      // Route based on existing progress — never regress users who already completed steps
+      if (['avatar_selected', 'avatar_selection'].includes(memberStatus ?? '')) {
         setStep('questions')
         setSelfEmailLookingUp(false)
-      } else if (['budget_submitted', 'active'].includes(memberStatus ?? '')) {
+      } else if (['pref_q1', 'pref_q2', 'pref_q3', 'pref_q4', 'budget_submitted', 'active'].includes(memberStatus ?? '')) {
         setAlreadyResponded('in')
         setSelfEmailLookingUp(false)
+      } else if (memberStatus === 'consented') {
+        // Already accepted — skip consent API call, go straight to avatar
+        setStep('avatar')
+        setSelfEmailLookingUp(false)
       } else {
-        await doConsent(mid) // new/invited/consented — proceed normally
+        await doConsent(mid) // 'invited' or brand-new member
       }
     } catch {
       setSelfEmailError('Network error — check your connection.')
@@ -254,6 +259,7 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
   async function submitPreferences(finalAnswers: Record<string, string>) {
     if (submitting || !resolvedMemberId) return
     setSubmitting(true)
+    setPreferenceError(false)
     try {
       const res = await fetch('/api/member/preferences', {
         method: 'POST',

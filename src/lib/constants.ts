@@ -1,7 +1,7 @@
 import type { MemberStatus, AvatarType, BudgetTier } from '@/types'
 
 export const ACTIVE_MEMBER_STATUSES: MemberStatus[] = [
-  'consented', 'avatar_selection', 'pref_q1', 'pref_q2',
+  'consented', 'avatar_selected', 'avatar_selection', 'pref_q1', 'pref_q2',
   'pref_q3', 'pref_q4', 'active',
 ]
 

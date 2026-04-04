@@ -47,10 +47,10 @@ export async function POST(req: NextRequest) {
     .map((d: { name?: string } | string) => (typeof d === 'object' ? d?.name : d))
     .filter((n): n is string => Boolean(n))
   const tripName = isOrganizerPick
-    ? `${destNames[0]} or Bust`
+    ? `${destNames[0] ?? 'Adventure'} or Bust`
     : destNames.length > 1
       ? `${destNames.slice(0, -1).join(', ')} or ${destNames[destNames.length - 1]}`
-      : `${destNames[0]} Trip`
+      : `${destNames[0] ?? 'Squad'} Trip`
 
   const now = new Date()
   const questDeadline = new Date(now.getTime() + 2 * 3_600_000) // T+2h

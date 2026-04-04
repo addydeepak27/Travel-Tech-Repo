@@ -21,7 +21,7 @@ export async function POST(
 
   if (!current) return NextResponse.json({ error: 'Member not found' }, { status: 404 })
 
-  const ACTIVE_STATUSES = ['consented', 'avatar_selected', 'budget_submitted', 'active']
+  const ACTIVE_STATUSES = ['consented', 'avatar_selected', 'avatar_selection', 'pref_q1', 'pref_q2', 'pref_q3', 'pref_q4', 'budget_submitted', 'active']
 
   if (choice === 'out') {
     // Don't regress active/further-along members back to declined

@@ -43,9 +43,9 @@ export default function HomePage() {
     const d = new Date(); d.setFullYear(d.getFullYear() + 1); return d.toISOString().split('T')[0]
   })
   const [minDeadline] = useState(() => {
-    const d = new Date(); d.setHours(d.getHours() + 1); return d.toISOString().slice(0, 16)
+    const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]
   })
-  const voteDeadlineValid = voteDeadline.length > 0 && voteDeadline > minDeadline
+  const voteDeadlineValid = voteDeadline.length > 0 && voteDeadline >= minDeadline
   const canProceedDestination = (destMode === 'group_vote'
     ? selectedDests.length >= 2 && voteDeadlineValid
     : selectedDests.length >= 1) && travelMonth.length > 0
@@ -93,7 +93,7 @@ export default function HomePage() {
         memberEmails: rawEmails,
         destinationMode: destMode,
         travelMonth: travelMonth || null,
-        voteDeadline: voteDeadline || null,
+        voteDeadline: voteDeadline ? `${voteDeadline}T23:59:00` : null,
       }),
     })
 
@@ -535,7 +535,7 @@ export default function HomePage() {
                 </p>
               </div>
               <input
-                type="datetime-local"
+                type="date"
                 value={voteDeadline}
                 min={minDeadline}
                 onChange={e => setVoteDeadline(e.target.value)}
@@ -549,12 +549,12 @@ export default function HomePage() {
               />
               {voteDeadline && !voteDeadlineValid && (
                 <p className="text-xs mt-1.5" style={{ color: '#ef4444' }}>
-                  ⚠️ Deadline must be at least 1 hour from now
+                  ⚠️ Deadline must be at least tomorrow
                 </p>
               )}
               {voteDeadline && voteDeadlineValid && (
-                <p className="text-xs mt-1.5" style={{ color: '#db2777' }}>
-                  🔒 Vote locks at {new Date(voteDeadline).toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                <p className="text-xs mt-1.5 font-medium" style={{ color: '#db2777' }}>
+                  🔒 Voting closes end of day on {new Date(voteDeadline + 'T12:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
                 </p>
               )}
             </div>
