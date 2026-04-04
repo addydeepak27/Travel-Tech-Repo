@@ -351,3 +351,7 @@
 ## Session: 2026-04-04 11:26
 **Changed:** src/app/trip/[tripId]/page.tsx 
 **Recent commits:** 06c9d8a session log: 2026-04-04 11:17 629893f session log: 2026-04-04 edge-case audit + ESLint fix pass cb108be fix: resolve all ESLint errors across user journey pages 
+
+## Session: 2026-04-04 11:36
+**Changed:** src/app/join/[tripId]/page.tsx src/app/trip/[tripId]/page.tsx 
+**Recent commits:** c0e520d session log: 2026-04-04 11:26 06c9d8a session log: 2026-04-04 11:17 629893f session log: 2026-04-04 edge-case audit + ESLint fix pass 
