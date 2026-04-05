@@ -567,7 +567,7 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
 
             {/* Avatar claims — non-planner roles only */}
             <div>
-              <SectionLabel>Roles claimed ({claimedCount}/6)</SectionLabel>
+              <SectionLabel>Roles claimed ({claimedCount}/{NON_PLANNER_ROLES.length})</SectionLabel>
               <div className="grid grid-cols-2 gap-2">
                 {NON_PLANNER_ROLES.map(key => {
                   const meta = AVATAR_META[key]

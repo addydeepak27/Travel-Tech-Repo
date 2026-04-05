@@ -12,6 +12,7 @@ import { ACTIVE_MEMBER_STATUSES } from '@/lib/constants'
 
 // ── Sticky Header — Trip Snapshot ─────────────────────────────────────────────
 const STATUS_LABELS: Record<string, string> = {
+  draft: 'Draft',
   inviting: 'Inviting',
   avatar_collection: 'Picking roles',
   budget_collection: 'Setting budget',
@@ -23,6 +24,7 @@ const STATUS_LABELS: Record<string, string> = {
   itinerary_preferences: 'Filling vibes',
   itinerary_vote: 'Final vote',
   locked: 'Locked ✓',
+  cancelled: 'Cancelled',
 }
 
 const BUDGET_RANGE_COMPACT: Record<string, string> = {
@@ -1201,8 +1203,9 @@ export default function TripDashboard({ params }: { params: Promise<{ tripId: st
   const totalCount = members.filter(m => !['declined', 'dropped'].includes(m.status)).length
   const doneTasks = tasks.filter(t => t.status === 'done').length
   const hypeScore = Math.round(
-    (activeCount / Math.max(totalCount, 1)) * 50 +
-    (doneTasks / Math.max(tasks.length, 1)) * 50
+    tasks.length === 0
+      ? (activeCount / Math.max(totalCount, 1)) * 100
+      : (activeCount / Math.max(totalCount, 1)) * 50 + (doneTasks / tasks.length) * 50
   )
 
   const stage = getStage(trip.status)
