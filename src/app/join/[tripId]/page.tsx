@@ -600,9 +600,9 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
         <div className="absolute top-0 left-1/4 w-40 h-40 rounded-full blur-3xl opacity-25 pointer-events-none" style={{ background: '#a78bfa' }} />
         <div className="absolute bottom-0 right-1/4 w-32 h-32 rounded-full blur-3xl opacity-20 pointer-events-none" style={{ background: '#f472b6' }} />
         <div className="text-5xl mb-3 relative">🌊</div>
-        <h1 className="text-2xl font-black text-white relative">{tripName}</h1>
+        <h1 className="text-3xl font-black text-white relative">{tripName}</h1>
         {orgMeta && (
-          <p className="text-sm mt-1.5 relative" style={{ color: 'rgba(255,255,255,0.75)' }}>
+          <p className="text-base mt-1.5 relative" style={{ color: 'rgba(255,255,255,0.85)' }}>
             {orgMeta.icon} {orgMeta.label} is organising this trip
           </p>
         )}
@@ -621,8 +621,8 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
           <div className="flex items-center gap-3">
             <div className="text-2xl">👥</div>
             <div>
-              <div className="font-semibold">{memberCount} people invited</div>
-              <div className="text-xs" style={{ color: 'var(--muted)' }}>Everyone picks a role and owns part of the planning</div>
+              <div className="font-semibold text-base">{memberCount} people invited</div>
+              <div className="text-sm" style={{ color: 'var(--muted)' }}>Everyone picks a role and owns part of the planning</div>
             </div>
           </div>
         </div>
@@ -634,9 +634,9 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
         >
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xl">🍫</span>
-            <p className="text-sm font-black">First = more brownie points</p>
+            <p className="text-base font-black">First = more brownie points</p>
           </div>
-          <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
+          <p className="text-sm mb-3" style={{ color: 'var(--muted)' }}>
             Every action earns points — but early movers earn <span style={{ color: '#db2777', fontWeight: 700 }}>way more</span>. The squad leaderboard is live.
           </p>
           <div className="space-y-2">
@@ -649,7 +649,7 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
               <div key={action} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-sm">{emoji}</span>
-                  <span className="text-xs font-medium">{action}</span>
+                  <span className="text-sm font-medium">{action}</span>
                 </div>
                 <span
                   className="text-xs font-bold px-2 py-0.5 rounded-full"
@@ -660,7 +660,7 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
               </div>
             ))}
           </div>
-          <div className="mt-3 pt-3 text-xs font-semibold" style={{ borderTop: '1px solid rgba(124,58,237,0.15)', color: '#db2779' }}>
+          <div className="mt-3 pt-3 text-sm font-semibold" style={{ borderTop: '1px solid rgba(124,58,237,0.15)', color: '#db2779' }}>
             ⏰ Whoever joins last gets 1 pt. First in = full squad size. Don&apos;t be last.
           </div>
           <div
@@ -669,8 +669,8 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
           >
             <span className="text-2xl flex-shrink-0">🎁</span>
             <div>
-              <p className="text-sm font-black" style={{ color: '#db2777' }}>Brownie points = real gifts</p>
-              <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--foreground)', opacity: 0.75 }}>
+              <p className="text-base font-black" style={{ color: '#db2777' }}>Brownie points = real gifts</p>
+              <p className="text-sm mt-0.5 leading-snug" style={{ color: 'var(--foreground)', opacity: 0.75 }}>
                 Top scorers cash in for surprises at trip end. Details dropping soon — stack those points.
               </p>
             </div>
@@ -695,8 +695,8 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
               <div key={step} className="flex items-start gap-3">
                 <span className="text-lg flex-shrink-0">{icon}</span>
                 <div>
-                  <div className="text-sm font-semibold">{step}</div>
-                  <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{detail}</div>
+                  <div className="text-base font-semibold">{step}</div>
+                  <div className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>{detail}</div>
                 </div>
               </div>
             ))}
@@ -706,8 +706,8 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
         {/* Self-join (no ?m= param) */}
         {!urlMemberId && (
           <div className="rounded-2xl p-4" style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}>
-            <p className="text-sm font-semibold mb-1">Enter your email to join</p>
-            <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
+            <p className="text-base font-semibold mb-1">Enter your email to join</p>
+            <p className="text-sm mb-3" style={{ color: 'var(--muted)' }}>
               We&apos;ll match you to your invite or create a spot for you.
             </p>
             <input

@@ -149,8 +149,8 @@ export default function HomePage() {
             <div className="text-center relative">
               <div className="text-5xl mb-3">🌊</div>
               <h1 className="text-4xl font-black tracking-tight text-white leading-none">Toh Chale</h1>
-              <p className="text-base font-semibold mt-3 text-white opacity-90">Your squad. One link. Full trip planned.</p>
-              <p className="text-sm mt-2 leading-relaxed font-medium" style={{ color: 'rgba(255,255,255,0.92)' }}>
+              <p className="text-xl font-bold mt-3 text-white">Your squad. One link. Full trip planned.</p>
+              <p className="text-base mt-2 leading-relaxed font-medium" style={{ color: 'rgba(255,255,255,0.92)' }}>
                 Votes, roles & AI itinerary — no app, no chaos.
               </p>
               {/* India-centric badge */}
@@ -173,8 +173,8 @@ export default function HomePage() {
               ].map(({ icon, title, sub, bg, accent }) => (
                 <div key={title} className="p-4 rounded-2xl flex flex-col gap-2" style={{ background: bg, border: `1.5px solid ${accent}22` }}>
                   <div className="text-2xl">{icon}</div>
-                  <div className="font-bold text-sm leading-tight">{title}</div>
-                  <div className="text-xs leading-relaxed" style={{ color: 'var(--muted)' }}>{sub}</div>
+                  <div className="font-bold text-base leading-tight">{title}</div>
+                  <div className="text-sm leading-relaxed" style={{ color: 'var(--muted)' }}>{sub}</div>
                 </div>
               ))}
             </div>
