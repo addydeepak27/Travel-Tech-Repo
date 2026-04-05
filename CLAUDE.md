@@ -495,3 +495,24 @@
 ## Session: 2026-04-05 11:42
 **Changed:** src/app/api/claude/destinations/route.ts src/app/api/claude/tips/route.ts src/app/api/trip/[tripId]/join-info/route.ts src/app/api/trip/vote/route.ts src/app/api/webhook/twilio/route.ts src/app/avatar/[tripId]/[memberId]/page.tsx src/app/hotels/[tripId]/page.tsx src/app/join/[tripId]/page.tsx src/app/organizer/[tripId]/page.tsx src/app/page.tsx 
 **Recent commits:** 0395a55 session log: 2026-04-05 11:39 70cf0c3 session log: 2026-04-05 11:34 d02f632 session log: 2026-04-05 11:26 
+
+## Session: 2026-04-05 (destination vote + typography + leaderboard audit)
+**Commits:** ba55eec, fb75620, 63f4b82
+**Changed:** src/app/join/[tripId]/page.tsx src/app/organizer/[tripId]/page.tsx src/app/page.tsx src/app/trip/[tripId]/page.tsx src/app/hotels/[tripId]/page.tsx src/app/api/trip/vote/route.ts src/app/api/trip/[tripId]/join-info/route.ts src/app/avatar/[tripId]/[memberId]/page.tsx
+
+**Destination vote (Q1 of 5) — ba55eec:**
+- `allQuestions` converted to `useMemo([destinations])` — guaranteed recompute, no stale cache issues
+- Destination vote prepended as Q1 when `destinations.length > 1` (group_vote trips only)
+- Landing "WHAT HAPPENS AFTER YOU JOIN": shows Vote on destination as Step 2 with "Goa vs Manali — Q1 of 5" copy when 2+ destinations; shows 2 steps for organizer_pick trips
+- Vote API: blocks declined/dropped members (403)
+
+**Typography — fb75620:**
+- Landing hero value prop: text-base → text-xl; sub-tagline: text-sm → text-base
+- HOW IT WORKS cards: titles text-sm → text-base; descriptions text-xs → text-sm
+- Join page trip name: text-2xl → text-3xl; all body copy bumped one size
+
+**Leaderboard audit + fixes — 63f4b82:**
+- Member dashboard STATUS_LABELS: added 'draft' and 'cancelled' (was showing raw string)
+- HypeScore: when tasks.length === 0, use 100% participation weighting (was capped at 50%)
+- Roles claimed: hardcoded /6 → NON_PLANNER_ROLES.length
+- Verified: both dashboards use identical brownie_points field, sort, medals, and squad size denominator
