@@ -137,7 +137,10 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
             setStep('avatar')
           } else if (['avatar_selected', 'avatar_selection'].includes(me?.status ?? '')) {
             setStep('questions')
-          } else if (['pref_q1', 'pref_q2', 'pref_q3', 'pref_q4', 'budget_submitted', 'active'].includes(me?.status ?? '')) {
+          } else if (['pref_q1', 'pref_q2', 'pref_q3', 'pref_q4'].includes(me?.status ?? '')) {
+            // Partially completed — let them re-answer (upsert overwrites)
+            setStep('questions')
+          } else if (['budget_submitted', 'active'].includes(me?.status ?? '')) {
             setAlreadyResponded('in')
           }
           // 'invited' → show landing (default)
@@ -172,7 +175,10 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
       if (['avatar_selected', 'avatar_selection'].includes(memberStatus ?? '')) {
         setStep('questions')
         setSelfEmailLookingUp(false)
-      } else if (['pref_q1', 'pref_q2', 'pref_q3', 'pref_q4', 'budget_submitted', 'active'].includes(memberStatus ?? '')) {
+      } else if (['pref_q1', 'pref_q2', 'pref_q3', 'pref_q4'].includes(memberStatus ?? '')) {
+        setStep('questions')
+        setSelfEmailLookingUp(false)
+      } else if (['budget_submitted', 'active'].includes(memberStatus ?? '')) {
         setAlreadyResponded('in')
         setSelfEmailLookingUp(false)
       } else if (memberStatus === 'consented') {

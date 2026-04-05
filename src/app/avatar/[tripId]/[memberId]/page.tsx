@@ -36,6 +36,7 @@ export default function AvatarPage({ params }: { params: Promise<{ tripId: strin
   const [avatarCounts, setAvatarCounts] = useState<Partial<Record<AvatarType, number>>>({})
   const [selected, setSelected] = useState<AvatarType | null>(null)
   const [organizerAvatar, setOrganizerAvatar] = useState<AvatarType | null>(null)
+  const [memberName, setMemberName] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(false)
   const [isOrganizer, setIsOrganizer] = useState(false)
@@ -61,6 +62,8 @@ export default function AvatarPage({ params }: { params: Promise<{ tripId: strin
         const org = (trip.members ?? []).find((m: { id: string }) => m.id === trip.organizer_id)
         if (org?.avatar) setOrganizerAvatar(org.avatar as AvatarType)
         if (trip.organizer_id === memberId) setIsOrganizer(true)
+        const me = (trip.members ?? []).find((m: { id: string }) => m.id === memberId)
+        if (me?.name) setMemberName(me.name)
       } catch { /* show page anyway */ }
       setLoading(false)
     }
@@ -72,7 +75,7 @@ export default function AvatarPage({ params }: { params: Promise<{ tripId: strin
     : NON_PLANNER_AVATARS
 
   async function handleSelect(avatar: AvatarType) {
-    if (saving) return
+    if (saving || !memberName.trim()) return
 
     // Expand card on first tap — confirm on second tap of same card
     if (expandedAvatar !== avatar) {
@@ -88,7 +91,7 @@ export default function AvatarPage({ params }: { params: Promise<{ tripId: strin
       const res = await fetch('/api/member/avatar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ memberId, avatar }),
+        body: JSON.stringify({ memberId, avatar, name: memberName.trim() }),
       })
       if (!res.ok) throw new Error('save failed')
       setTimeout(() => router.push(`/preferences/${tripId}/${memberId}`), 500)
@@ -135,6 +138,23 @@ export default function AvatarPage({ params }: { params: Promise<{ tripId: strin
 
       {/* Avatar list */}
       <div className="flex-1 px-4 pb-4 space-y-3 overflow-y-auto">
+        {/* Name input — required before picking a role */}
+        <div>
+          <input
+            type="text"
+            placeholder="Your name or squad nickname"
+            value={memberName}
+            onChange={e => setMemberName(e.target.value)}
+            maxLength={40}
+            className="w-full px-4 py-3 rounded-xl text-sm font-medium outline-none"
+            style={{
+              background: 'var(--card)',
+              border: `1.5px solid ${memberName.trim() ? 'var(--accent)' : '#ef4444'}`,
+            }}
+          />
+          <p className="text-xs mt-1 pl-1 font-medium" style={{ color: '#ef4444' }}>Required — pick a role after entering your name</p>
+        </div>
+
         {showAvatars.map(key => {
           const meta = AVATAR_META[key]
           const count = avatarCounts[key] ?? 0
@@ -146,7 +166,7 @@ export default function AvatarPage({ params }: { params: Promise<{ tripId: strin
             <button
               key={key}
               onClick={() => handleSelect(key)}
-              disabled={saving}
+              disabled={saving || !memberName.trim()}
               className="w-full text-left rounded-2xl transition-all overflow-hidden card-elevated"
               style={{
                 background: isSelected ? colors.accent : isExpanded ? colors.bg : 'var(--card)',

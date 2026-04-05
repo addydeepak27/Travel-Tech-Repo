@@ -21,7 +21,7 @@ export async function GET(
 
   const { data: members, error: membersError } = await db
     .from('members')
-    .select('id, avatar, status')
+    .select('id, avatar, status, name')
     .eq('trip_id', tripId)
 
   if (membersError) {
