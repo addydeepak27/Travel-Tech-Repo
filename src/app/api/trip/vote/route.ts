@@ -24,6 +24,9 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (!member) return NextResponse.json({ error: 'Member not found' }, { status: 404 })
+  if (['declined', 'dropped'].includes(member.status)) {
+    return NextResponse.json({ error: 'Not eligible to vote' }, { status: 403 })
+  }
 
   // Upsert — one vote per member per vote type
   const { error } = await db.from('votes').upsert(

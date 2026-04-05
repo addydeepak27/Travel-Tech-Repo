@@ -126,13 +126,18 @@ const STATUS_LABELS: Record<string, string> = {
 }
 
 const MEMBER_STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  invited:          { label: 'Invited',    color: 'var(--muted)' },
-  consented:        { label: 'Joined',     color: 'var(--accent)' },
-  avatar_selected:  { label: 'Role set',   color: 'var(--accent)' },
-  budget_submitted: { label: 'Budget in',  color: 'var(--success)' },
-  active:           { label: 'Active',     color: 'var(--success)' },
-  declined:         { label: 'Declined',   color: '#ef4444' },
-  dropped:          { label: 'Dropped',    color: '#ef4444' },
+  invited:          { label: 'Invited',      color: 'var(--muted)' },
+  consented:        { label: 'Joined',       color: 'var(--accent)' },
+  avatar_selected:  { label: 'Role set',     color: 'var(--accent)' },
+  avatar_selection: { label: 'Picking role', color: 'var(--accent)' },
+  pref_q1:          { label: 'Filling in',   color: 'var(--accent)' },
+  pref_q2:          { label: 'Filling in',   color: 'var(--accent)' },
+  pref_q3:          { label: 'Filling in',   color: 'var(--accent)' },
+  pref_q4:          { label: 'Filling in',   color: 'var(--accent)' },
+  budget_submitted: { label: 'Budget in',    color: 'var(--success)' },
+  active:           { label: 'Active',       color: 'var(--success)' },
+  declined:         { label: 'Declined',     color: '#ef4444' },
+  dropped:          { label: 'Dropped',      color: '#ef4444' },
 }
 
 // ── Section heading ───────────────────────────────────────────────────────────
@@ -172,6 +177,10 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
   const [tipsVisible, setTipsVisible] = useState(false)
   const [alertDismissed, setAlertDismissed] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviting, setInviting] = useState(false)
+  const [inviteResult, setInviteResult] = useState<'sent' | 'resent' | 'error' | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   function copyInviteLink() {
     const url = `${window.location.origin}/join/${tripId}`
@@ -229,7 +238,7 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
-  }, [tripId, organizerId])
+  }, [tripId, organizerId, refreshKey])
 
   useEffect(() => {
     if (!trip?.group_budget_zone || tips.length > 0) return
@@ -249,7 +258,6 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
 
   async function nudge(memberId: string) {
     if (nudgingIds.has(memberId)) return
-    // Use trip.organizer_id from API (not localStorage) so nudge always works
     const realOrganizerId = trip?.organizer_id ?? organizerId
     if (!realOrganizerId) return
     setNudgingIds(prev => new Set(prev).add(memberId))
@@ -259,6 +267,28 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
       body: JSON.stringify({ tripId, memberId, organizerId: realOrganizerId }),
     })
     setTimeout(() => setNudgingIds(prev => { const s = new Set(prev); s.delete(memberId); return s }), 2000)
+  }
+
+  async function sendInvite() {
+    const email = inviteEmail.trim().toLowerCase()
+    if (!email.includes('@') || inviting) return
+    const realOrganizerId = trip?.organizer_id ?? organizerId
+    if (!realOrganizerId) return
+    setInviting(true)
+    setInviteResult(null)
+    try {
+      const res = await fetch(`/api/trip/${tripId}/invite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, organizerId: realOrganizerId }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setInviteResult('error'); return }
+      setInviteResult(data.resent ? 'resent' : 'sent')
+      setInviteEmail('')
+      setRefreshKey(k => k + 1) // force member list reload
+    } catch { setInviteResult('error') }
+    finally { setInviting(false) }
   }
 
   if (loading) {
@@ -281,7 +311,7 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
   }
 
 
-  const activeMembers = members.filter(m => ['consented', 'avatar_selected', 'budget_submitted', 'active'].includes(m.status))
+  const activeMembers = members.filter(m => ['consented', 'avatar_selected', 'avatar_selection', 'pref_q1', 'pref_q2', 'pref_q3', 'pref_q4', 'budget_submitted', 'active'].includes(m.status))
   const nonResponders = members.filter(m => m.status === 'invited')
   const organizerMember = members.find(m => m.id === trip.organizer_id) ?? null
   const organizerNeedsPrefs = organizerMember?.budget_tier === null
@@ -312,9 +342,9 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
 
   const tabs: { id: 'monitor' | 'tasks' | 'plan' | 'squad'; emoji: string; label: string }[] = [
     { id: 'monitor', emoji: '👁', label: 'Monitor' },
+    { id: 'squad',   emoji: '👥', label: 'Squad' },
     { id: 'tasks',   emoji: '✅', label: 'Tasks' },
     { id: 'plan',    emoji: '🗺', label: 'Plan' },
-    { id: 'squad',   emoji: '👥', label: 'Squad' },
   ]
 
   const memberLabel = (m: TripMember) => m.name || m.email || m.phone || 'Member'
@@ -374,15 +404,58 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
                 <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}>Travel code</span>
               </div>
               <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
-                Share the link below or give them the code to enter at the home page.
+                Share the link below or give them the code to enter on the home page.
               </p>
               <button
                 onClick={copyInviteLink}
-                className="w-full py-2.5 rounded-xl text-sm font-bold transition-all"
+                className="w-full py-2.5 rounded-xl text-sm font-bold transition-all mb-3"
                 style={{ background: copied ? 'var(--success)' : 'linear-gradient(135deg, #7c3aed, #db2777)', color: '#fff' }}
               >
                 {copied ? '✓ Copied!' : 'Copy invite link'}
               </button>
+
+              {/* Invite by email */}
+              <div style={{ borderTop: '1px solid var(--card-border)', paddingTop: 12 }}>
+                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--muted)' }}>OR INVITE DIRECTLY BY EMAIL</p>
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    placeholder="friend@example.com"
+                    value={inviteEmail}
+                    onChange={e => { setInviteEmail(e.target.value); setInviteResult(null) }}
+                    onKeyDown={e => e.key === 'Enter' && sendInvite()}
+                    className="flex-1 px-3 py-2.5 rounded-xl text-sm outline-none"
+                    style={{
+                      background: 'var(--background)',
+                      border: '1.5px solid var(--input-border)',
+                      color: 'var(--foreground)',
+                    }}
+                  />
+                  <button
+                    onClick={sendInvite}
+                    disabled={!inviteEmail.includes('@') || inviting}
+                    className="px-4 py-2.5 rounded-xl text-sm font-bold flex-shrink-0 disabled:opacity-40 transition-all"
+                    style={{ background: 'var(--accent)', color: '#fff' }}
+                  >
+                    {inviting ? '⏳' : 'Send'}
+                  </button>
+                </div>
+                {inviteResult === 'sent' && (
+                  <p className="text-xs mt-1.5 font-medium" style={{ color: 'var(--success)' }}>
+                    ✓ Invite sent — they&apos;ll get a FOMO-packed email right now 🚀
+                  </p>
+                )}
+                {inviteResult === 'resent' && (
+                  <p className="text-xs mt-1.5 font-medium" style={{ color: '#d97706' }}>
+                    ↩ Already invited — re-sent a nudge to get them moving 😅
+                  </p>
+                )}
+                {inviteResult === 'error' && (
+                  <p className="text-xs mt-1.5" style={{ color: '#ef4444' }}>
+                    Something went wrong — try again.
+                  </p>
+                )}
+              </div>
             </div>
 
             {/* Organiser needs to fill their own preferences */}
@@ -391,7 +464,7 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
                 <div className="flex items-start gap-3">
                   <span className="text-xl flex-shrink-0">📝</span>
                   <div className="flex-1">
-                    <p className="text-sm font-semibold">You haven&apos;t filled your preferences</p>
+                    <p className="text-sm font-semibold">You haven&apos;t set your preferences yet</p>
                     <p className="text-xs mt-0.5 mb-3" style={{ color: 'var(--muted)' }}>
                       Your budget + vibe feeds into the group plan. Takes 60 seconds.
                     </p>
@@ -530,29 +603,97 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
               </div>
             </div>
 
+            {/* All squad members — always visible */}
+            {members.filter(m => !['declined', 'dropped'].includes(m.status)).length > 0 && (
+              <div>
+                <SectionLabel>Your squad ({members.filter(m => !['declined', 'dropped'].includes(m.status)).length})</SectionLabel>
+                <div className="space-y-2">
+                  {members
+                    .filter(m => !['declined', 'dropped'].includes(m.status))
+                    .map(m => {
+                      const avatarMeta = m.avatar ? AVATAR_META[m.avatar] : null
+                      const needsNudge = m.status !== 'active' && m.id !== (trip?.organizer_id ?? organizerId)
+                      const statusInfo = MEMBER_STATUS_LABELS[m.status]
+                      const isOrganizer = m.id === (trip?.organizer_id ?? organizerId)
+                      return (
+                        <div
+                          key={m.id}
+                          className="flex items-center gap-3 px-3 py-2.5 rounded-2xl bg-white"
+                          style={{ border: `1px solid ${needsNudge ? 'rgba(219,39,119,0.25)' : 'var(--card-border)'}` }}
+                        >
+                          <span className="text-xl flex-shrink-0">{avatarMeta?.icon ?? '👤'}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="text-sm font-semibold truncate">{memberLabel(m)}</p>
+                              {isOrganizer && <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}>you</span>}
+                            </div>
+                            <span
+                              className="text-xs font-medium"
+                              style={{ color: statusInfo?.color ?? 'var(--muted)' }}
+                            >
+                              {statusInfo?.label ?? m.status}
+                              {m.status === 'invited' && ' · hasn\'t joined'}
+                              {m.status === 'consented' && ' · needs a role'}
+                              {(m.status === 'avatar_selected' || m.status === 'avatar_selection') && ' · needs preferences'}
+                              {m.status === 'active' && ' · ✓ all done'}
+                            </span>
+                          </div>
+                          {needsNudge ? (
+                            <button
+                              onClick={() => nudge(m.id)}
+                              disabled={nudgingIds.has(m.id)}
+                              className="flex-shrink-0 text-xs px-3 py-1.5 rounded-xl font-bold transition-all"
+                              style={{
+                                background: nudgingIds.has(m.id) ? 'var(--success)' : 'linear-gradient(135deg, #7c3aed, #db2777)',
+                                color: '#fff',
+                                minWidth: 72,
+                              }}
+                            >
+                              {nudgingIds.has(m.id) ? '✓ Sent' : '👉 Nudge'}
+                            </button>
+                          ) : (
+                            <span className="text-xs font-bold flex-shrink-0" style={{ color: 'var(--success)' }}>✓</span>
+                          )}
+                        </div>
+                      )
+                    })}
+                </div>
+              </div>
+            )}
+
             {/* Waiting to respond */}
             {nonResponders.length > 0 && (
               <div>
-                <SectionLabel>Waiting to respond ({nonResponders.length})</SectionLabel>
+                <SectionLabel>👻 Ghosting you ({nonResponders.length})</SectionLabel>
                 <div className="space-y-2">
                   {nonResponders.map(m => (
                     <div
                       key={m.id}
-                      className="flex items-center justify-between p-3 rounded-2xl bg-white"
+                      className="p-3 rounded-2xl bg-white"
                       style={{ border: '1px solid var(--card-border)' }}
                     >
-                      <div>
-                        <p className="text-sm font-medium">{memberLabel(m)}</p>
-                        <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>Invite sent · no response</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold truncate">{memberLabel(m)}</p>
+                          <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>Invite sent · haven&apos;t joined yet</p>
+                        </div>
+                        <button
+                          onClick={() => nudge(m.id)}
+                          disabled={nudgingIds.has(m.id)}
+                          className="text-xs px-4 py-2 rounded-xl font-bold flex-shrink-0 transition-all"
+                          style={{
+                            background: nudgingIds.has(m.id) ? 'var(--success)' : 'linear-gradient(135deg, #7c3aed, #db2777)',
+                            color: '#fff',
+                          }}
+                        >
+                          {nudgingIds.has(m.id) ? '✓ Sent!' : '👉 Nudge'}
+                        </button>
                       </div>
-                      <button
-                        onClick={() => nudge(m.id)}
-                        disabled={nudgingIds.has(m.id)}
-                        className="text-xs px-4 py-2 rounded-xl font-semibold transition-all flex-shrink-0"
-                        style={{ background: 'var(--accent)', color: '#fff', opacity: nudgingIds.has(m.id) ? 0.6 : 1 }}
-                      >
-                        {nudgingIds.has(m.id) ? '✓ Sent' : 'Nudge'}
-                      </button>
+                      {!nudgingIds.has(m.id) && (
+                        <p className="text-xs mt-2 px-1 italic" style={{ color: 'var(--muted)' }}>
+                          &ldquo;You said yes to {trip.name} — now pick a role before {memberLabel(organizerMember ?? m)} panics 😭&rdquo;
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -560,37 +701,52 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
             )}
 
             {/* Action needed */}
-            {activeMembers.filter(m => m.status !== 'active').length > 0 && (
+            {activeMembers.filter(m => m.status !== 'active' && m.id !== (trip?.organizer_id ?? organizerId)).length > 0 && (
               <div>
-                <SectionLabel>Action needed</SectionLabel>
+                <SectionLabel>⚡ Almost there — need a push</SectionLabel>
                 <div className="space-y-2">
-                  {activeMembers.filter(m => m.status !== 'active').map(m => {
+                  {activeMembers.filter(m => m.status !== 'active' && m.id !== (trip?.organizer_id ?? organizerId)).map(m => {
                     const statusInfo = MEMBER_STATUS_LABELS[m.status]
-                    const hint = m.status === 'consented' ? "Hasn't picked a role yet" : m.status === 'avatar_selected' ? "Hasn't submitted budget" : 'In progress'
+                    const nudgePreview =
+                      m.status === 'consented'
+                        ? `"You said yes to ${trip.name} — now pick a role before ${memberLabel(organizerMember ?? m)} panics 😭"`
+                        : m.status === 'avatar_selected' || m.status === 'avatar_selection'
+                        ? `"${trip.name} is almost ready to plan — just needs your budget 💸"`
+                        : `"${trip.name} needs you — ${memberLabel(organizerMember ?? m)} said please 🙏"`
                     return (
                       <div
                         key={m.id}
-                        className="flex items-center justify-between p-3 rounded-2xl bg-white"
+                        className="p-3 rounded-2xl bg-white"
                         style={{ border: '1px solid var(--card-border)' }}
                       >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {m.avatar && <span>{AVATAR_META[m.avatar]?.icon}</span>}
-                            <span className="text-sm font-medium truncate">{memberLabel(m)}</span>
-                            <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'var(--accent-muted)', color: statusInfo?.color ?? 'var(--muted)' }}>
-                              {statusInfo?.label}
-                            </span>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {m.avatar && <span>{AVATAR_META[m.avatar]?.icon}</span>}
+                              <span className="text-sm font-semibold truncate">{memberLabel(m)}</span>
+                              <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'var(--accent-muted)', color: statusInfo?.color ?? 'var(--muted)' }}>
+                                {statusInfo?.label}
+                              </span>
+                            </div>
                           </div>
-                          <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{hint}</p>
+                          <button
+                            onClick={() => nudge(m.id)}
+                            disabled={nudgingIds.has(m.id)}
+                            className="flex-shrink-0 text-xs px-4 py-2 rounded-xl font-bold transition-all"
+                            style={{
+                              background: nudgingIds.has(m.id) ? 'var(--success)' : 'rgba(124,58,237,0.1)',
+                              color: nudgingIds.has(m.id) ? '#fff' : '#7c3aed',
+                              border: nudgingIds.has(m.id) ? 'none' : '1.5px solid rgba(124,58,237,0.3)',
+                            }}
+                          >
+                            {nudgingIds.has(m.id) ? '✓ Sent!' : '👉 Nudge'}
+                          </button>
                         </div>
-                        <button
-                          onClick={() => nudge(m.id)}
-                          disabled={nudgingIds.has(m.id)}
-                          className="flex-shrink-0 text-xs px-3 py-2 rounded-xl font-medium ml-2"
-                          style={{ border: '1px solid var(--card-border)', color: 'var(--muted)' }}
-                        >
-                          {nudgingIds.has(m.id) ? '✓' : 'Nudge'}
-                        </button>
+                        {!nudgingIds.has(m.id) && (
+                          <p className="text-xs mt-2 px-1 italic" style={{ color: 'var(--muted)' }}>
+                            &ldquo;{nudgePreview}&rdquo;
+                          </p>
+                        )}
                       </div>
                     )
                   })}
@@ -770,52 +926,73 @@ export default function OrganizerDashboard({ params }: { params: Promise<{ tripI
               .sort((a, b) => (b.brownie_points ?? 0) - (a.brownie_points ?? 0))
               .map((m, idx) => {
                 const avatarMeta = m.avatar ? AVATAR_META[m.avatar] : null
-                const isInactive = m.status === 'invited'
+                const needsNudge = m.status !== 'active' && m.id !== (trip?.organizer_id ?? organizerId)
                 const pts = m.brownie_points ?? 0
                 const medal = pts > 0 ? (idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `${idx + 1}`) : `${idx + 1}`
                 const statusInfo = MEMBER_STATUS_LABELS[m.status]
                 return (
                   <div
                     key={m.id}
-                    className="flex items-center gap-3 p-3 rounded-2xl bg-white"
-                    style={{ border: '1px solid var(--card-border)', opacity: isInactive ? 0.5 : 1 }}
+                    className="p-3 rounded-2xl bg-white"
+                    style={{ border: '1px solid var(--card-border)' }}
                   >
-                    {/* Rank */}
-                    <span className="text-lg w-7 text-center flex-shrink-0">{medal}</span>
+                    <div className="flex items-center gap-3">
+                      {/* Rank */}
+                      <span className="text-lg w-7 text-center flex-shrink-0">{medal}</span>
 
-                    {/* Avatar icon */}
-                    <span className="text-2xl flex-shrink-0">{avatarMeta?.icon ?? '👤'}</span>
+                      {/* Avatar icon */}
+                      <span className="text-2xl flex-shrink-0">{avatarMeta?.icon ?? '👤'}</span>
 
-                    {/* Name + role + status */}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold truncate">
-                        {memberLabel(m)}
-                        {isInactive && <span className="ml-1 text-xs" style={{ color: 'var(--muted)' }}>Zzz</span>}
-                      </p>
-                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                        <span className="text-xs" style={{ color: 'var(--muted)' }}>
-                          {avatarMeta?.label.replace('The ', '') ?? 'No role'}
-                        </span>
-                        <span className="text-xs" style={{ color: 'var(--card-border)' }}>·</span>
-                        <span
-                          className="text-xs font-medium px-1.5 py-0.5 rounded-full"
+                      {/* Name + role + status */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold truncate">{memberLabel(m)}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                          <span className="text-xs" style={{ color: 'var(--muted)' }}>
+                            {avatarMeta?.label.replace('The ', '') ?? 'No role yet'}
+                          </span>
+                          <span className="text-xs" style={{ color: 'var(--card-border)' }}>·</span>
+                          <span
+                            className="text-xs font-medium px-1.5 py-0.5 rounded-full"
+                            style={{ background: 'var(--accent-muted)', color: statusInfo?.color ?? 'var(--muted)' }}
+                          >
+                            {statusInfo?.label ?? m.status}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Points OR nudge */}
+                      {needsNudge ? (
+                        <button
+                          onClick={() => nudge(m.id)}
+                          disabled={nudgingIds.has(m.id)}
+                          className="flex-shrink-0 text-xs px-3 py-1.5 rounded-xl font-bold transition-all"
                           style={{
-                            background: 'var(--accent-muted)',
-                            color: statusInfo?.color ?? 'var(--muted)',
+                            background: nudgingIds.has(m.id) ? 'var(--success)' : 'linear-gradient(135deg, #7c3aed, #db2777)',
+                            color: '#fff',
+                            minWidth: 64,
                           }}
                         >
-                          {statusInfo?.label ?? m.status}
-                        </span>
-                      </div>
+                          {nudgingIds.has(m.id) ? '✓ Sent' : '👉 Nudge'}
+                        </button>
+                      ) : (
+                        <div className="text-right flex-shrink-0 min-w-[48px]">
+                          <p className="text-base font-bold" style={{ color: pts > 0 ? 'var(--accent)' : 'var(--muted)' }}>{pts}</p>
+                          <p className="text-xs" style={{ color: 'var(--muted)' }}>🍫 pts</p>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Brownie points — matches user dashboard format */}
-                    <div className="text-right flex-shrink-0 min-w-[48px]">
-                      <p className="text-base font-bold" style={{ color: pts > 0 ? 'var(--accent)' : 'var(--muted)' }}>
-                        {pts}
-                      </p>
-                      <p className="text-xs" style={{ color: 'var(--muted)' }}>🍫 pts</p>
-                    </div>
+                    {/* Points for nudge-able members shown below */}
+                    {needsNudge && (
+                      <div className="flex items-center justify-between mt-2 pt-2" style={{ borderTop: '1px solid var(--card-border)' }}>
+                        <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                          {m.status === 'invited' ? "Hasn't joined yet" : m.status === 'consented' ? 'Joined · needs to pick a role' : ['avatar_selected', 'avatar_selection'].includes(m.status) ? 'Picking their role' : 'Filling in preferences'}
+                        </p>
+                        <p className="text-xs font-semibold" style={{ color: pts > 0 ? 'var(--accent)' : 'var(--muted)' }}>
+                          {pts} 🍫
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )
               })}

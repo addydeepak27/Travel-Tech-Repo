@@ -3,11 +3,12 @@
 import { useState, useEffect, use, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { AVATAR_META, BUDGET_TIER_META } from '@/types'
+import { AVATAR_META } from '@/types'
 import type { Trip, Member, MissionTask, ForYouCallout, ItineraryDay, BudgetTier } from '@/types'
 import Card from '@/components/Card'
 import { getBudgetStats } from '@/lib/budget'
 import { assignTasks, DOMAIN_META } from '@/lib/tasks'
+import { ACTIVE_MEMBER_STATUSES } from '@/lib/constants'
 
 // ── Sticky Header — Trip Snapshot ─────────────────────────────────────────────
 const STATUS_LABELS: Record<string, string> = {
@@ -324,6 +325,7 @@ function VotingCard({ trip, tripId, myMember }: { trip: Trip; tripId: string; my
         fetchDestVotes)
       .subscribe()
     return () => { supabase.removeChannel(channel) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId, trip.status, myMember?.id])
 
   async function handleDestinationVote(name: string) {
@@ -488,7 +490,6 @@ function ItineraryPlansCard({
   const [voting, setVoting] = useState(false)
   const [voteError, setVoteError] = useState<string | null>(null)
   const [voteCounts, setVoteCounts] = useState<Record<string, number>>({})
-  const router = useRouter()
 
   function fetchVotes() {
     fetch(`/api/trip/${tripId}/votes?voteType=itinerary`)
@@ -514,6 +515,7 @@ function ItineraryPlansCard({
         fetchVotes)
       .subscribe()
     return () => { supabase.removeChannel(channel) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId, myMember?.id])
 
   const plans = trip.itinerary_options
@@ -719,7 +721,7 @@ function NextMoveCard({
     },
     itinerary_preferences: {
       primary: 'Complete preferences (2 min)',
-      supporting: 'Helps finalize destination faster',
+      supporting: 'Helps finalize the plan faster.',
       linkLabel: 'Fill in your vibe →',
       linkHref: myMember ? `/preferences/${tripId}/${myMember.id}` : undefined,
     },
@@ -1140,6 +1142,7 @@ export default function TripDashboard({ params }: { params: Promise<{ tripId: st
     memberIdRef.current = stored ?? null
     async function init() { await loadData(stored ?? null) }
     init()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId])
 
   useEffect(() => {
@@ -1152,6 +1155,7 @@ export default function TripDashboard({ params }: { params: Promise<{ tripId: st
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId])
 
   if (loading) {
@@ -1193,7 +1197,7 @@ export default function TripDashboard({ params }: { params: Promise<{ tripId: st
     )
   }
 
-  const activeCount = members.filter(m => m.status === 'active').length
+  const activeCount = members.filter(m => ACTIVE_MEMBER_STATUSES.includes(m.status as never)).length
   const totalCount = members.filter(m => !['declined', 'dropped'].includes(m.status)).length
   const doneTasks = tasks.filter(t => t.status === 'done').length
   const hypeScore = Math.round(

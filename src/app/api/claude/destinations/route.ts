@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase'
 import { generateDestinations } from '@/lib/claude'
 import { sendEmail } from '@/lib/email'
-import { AVATAR_META } from '@/types'
 import type { AvatarType, BudgetTier } from '@/types'
 
 export async function POST(req: NextRequest) {

@@ -35,7 +35,6 @@ export default function AvatarPage({ params }: { params: Promise<{ tripId: strin
 
   const [avatarCounts, setAvatarCounts] = useState<Partial<Record<AvatarType, number>>>({})
   const [selected, setSelected] = useState<AvatarType | null>(null)
-  const [tripName, setTripName] = useState('')
   const [organizerAvatar, setOrganizerAvatar] = useState<AvatarType | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(false)
@@ -49,8 +48,6 @@ export default function AvatarPage({ params }: { params: Promise<{ tripId: strin
         const res = await fetch(`/api/trip/${tripId}/avatar-info`)
         if (!res.ok) { setLoading(false); return }
         const trip = await res.json()
-
-        setTripName(trip.name)
 
         const counts: Partial<Record<AvatarType, number>> = {}
         ;(trip.members ?? [])
@@ -73,8 +70,6 @@ export default function AvatarPage({ params }: { params: Promise<{ tripId: strin
   const showAvatars: AvatarType[] = isOrganizer
     ? (Object.keys(AVATAR_META) as AvatarType[])
     : NON_PLANNER_AVATARS
-
-  const availableCount = showAvatars.length
 
   async function handleSelect(avatar: AvatarType) {
     if (saving) return

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase'
 import { generateCostTips } from '@/lib/claude'
 import { sendEmail } from '@/lib/email'
-import type { BudgetTier } from '@/types'
 
 export async function POST(req: NextRequest) {
   const { tripId } = await req.json()

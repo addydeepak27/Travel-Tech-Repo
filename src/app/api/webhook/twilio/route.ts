@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase'
 import { sendWhatsApp } from '@/lib/twilio'
-import { AVATAR_META, BUDGET_TIER_META } from '@/types'
+import { BUDGET_TIER_META } from '@/types'
 import type { AvatarType, BudgetTier, VotePace } from '@/types'
 
 export async function POST(req: NextRequest) {
@@ -518,7 +518,6 @@ async function generateAndSendMissionPacks(
   for (const member of tripData.members ?? []) {
     if (!member.avatar || member.opt_out) continue
 
-    const avatarMeta = AVATAR_META[member.avatar as AvatarType]
     const tasks = getTasksForAvatar(member.avatar as AvatarType, tripId, member.id, departure)
 
     await db.from('mission_tasks').insert(tasks)

@@ -3,6 +3,7 @@
 import { useState, useEffect, use } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { Hotel } from '@/types'
+import { ACTIVE_MEMBER_STATUSES } from '@/lib/constants'
 
 export default function HotelsPage({ params }: { params: Promise<{ tripId: string }> }) {
   const { tripId } = use(params)
@@ -36,8 +37,7 @@ export default function HotelsPage({ params }: { params: Promise<{ tripId: strin
         setHotels(trip.hotel_options ?? [])
         setBudgetZone(trip.group_budget_zone)
 
-        const activeStatuses = ['consented', 'avatar_selected', 'budget_submitted', 'active']
-        const voters = (data.members ?? []).filter((m: { status: string }) => activeStatuses.includes(m.status))
+        const voters = (data.members ?? []).filter((m: { status: string }) => ACTIVE_MEMBER_STATUSES.includes(m.status as never))
         setTotalVoters(voters.length)
 
         if (votesRes.ok) {
@@ -178,6 +178,7 @@ export default function HotelsPage({ params }: { params: Promise<{ tripId: strin
             >
               {/* Static map */}
               {hotel.map_image_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={hotel.map_image_url}
                   alt={`Map showing ${hotel.name} location`}

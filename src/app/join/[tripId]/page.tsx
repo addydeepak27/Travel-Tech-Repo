@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect, useMemo, use } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { AVATAR_META } from '@/types'
 import type { AvatarType } from '@/types'
@@ -246,10 +246,41 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
     }
   }
 
+  const allQuestions = useMemo(() => {
+    if (destinations.length > 1) {
+      return [
+        {
+          id: 'destination_vote',
+          q: 'Where should the squad go?',
+          sub: 'Vote for your top pick — majority wins.',
+          options: destinations.map(d => ({ label: d.name, emoji: d.emoji ?? '📍', value: d.name })),
+        },
+        ...QUESTIONS,
+      ]
+    }
+    return QUESTIONS
+  }, [destinations])
+
   async function handleAnswer(questionId: string, value: string) {
+    if (questionId === 'destination_vote') {
+      // Fire-and-forget vote, don't add to preference answers
+      if (resolvedMemberId) {
+        fetch('/api/trip/vote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tripId, memberId: resolvedMemberId, voteType: 'destination', value }),
+        }).catch(() => {})
+      }
+      if (questionStep < allQuestions.length - 1) {
+        setQuestionStep(q => q + 1)
+      } else {
+        await submitPreferences(answers)
+      }
+      return
+    }
     const newAnswers = { ...answers, [questionId]: value }
     setAnswers(newAnswers)
-    if (questionStep < QUESTIONS.length - 1) {
+    if (questionStep < allQuestions.length - 1) {
       setQuestionStep(q => q + 1)
     } else {
       await submitPreferences(newAnswers)
@@ -277,7 +308,7 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
       setStep('done')
     } catch {
       setPreferenceError(true)
-      setQuestionStep(QUESTIONS.length - 1)
+      setQuestionStep(allQuestions.length - 1)
     } finally {
       setSubmitting(false)
     }
@@ -373,8 +404,8 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
 
   // ── QUESTIONS ─────────────────────────────────────────────────────────────
   if (step === 'questions') {
-    const q = QUESTIONS[questionStep]
-    const totalSteps = QUESTIONS.length
+    const q = allQuestions[questionStep]
+    const totalSteps = allQuestions.length
     const progress = Math.round(((questionStep) / totalSteps) * 100)
 
     return (
@@ -395,7 +426,7 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
               className="text-xs px-2 py-0.5 rounded-full font-semibold"
               style={{ background: 'rgba(219,39,119,0.1)', color: '#db2777' }}
             >
-              +bonus pts for filling in
+              +bonus pts per answer
             </span>
           </div>
           <h2 className="text-xl font-black leading-snug">{q.q}</h2>
@@ -650,11 +681,17 @@ export default function JoinPage({ params }: { params: Promise<{ tripId: string 
         <div className="p-4 rounded-2xl" style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}>
           <div className="text-xs font-medium mb-3" style={{ color: 'var(--accent)' }}>WHAT HAPPENS AFTER YOU JOIN</div>
           <div className="space-y-3">
-            {[
-              { icon: '🎭', step: 'Pick your role', detail: 'Each role owns a slice of the planning — 1 tap.' },
-              { icon: '💰', step: 'Share your budget + vibe', detail: '4 quick questions. Anonymous. Takes 60 seconds.' },
-              { icon: '🗳️', step: 'Vote on destination', detail: 'Majority wins. 1 tap in your browser.' },
-            ].map(({ icon, step, detail }) => (
+            {(destinations.length > 1
+              ? [
+                  { icon: '🎭', step: 'Pick your role', detail: 'Each role owns a slice of the planning — 1 tap.' },
+                  { icon: '🗳️', step: 'Vote on destination', detail: `${destinations.map(d => d.name).join(' vs ')} — Q1 of 5. Your vote is anonymous.` },
+                  { icon: '💰', step: 'Share your budget + vibe', detail: '4 more quick questions. Anonymous. Takes 60 seconds.' },
+                ]
+              : [
+                  { icon: '🎭', step: 'Pick your role', detail: 'Each role owns a slice of the planning — 1 tap.' },
+                  { icon: '💰', step: 'Share your budget + vibe', detail: '4 quick questions. Anonymous. Takes 60 seconds.' },
+                ]
+            ).map(({ icon, step, detail }) => (
               <div key={step} className="flex items-start gap-3">
                 <span className="text-lg flex-shrink-0">{icon}</span>
                 <div>

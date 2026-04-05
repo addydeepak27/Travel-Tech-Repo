@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { INDIAN_DESTINATIONS, TRENDING_DESTINATIONS } from '@/types'
 
@@ -38,10 +38,6 @@ export default function HomePage() {
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
   const canProceedIdentity = name.trim().length >= 1 && emailValid
-  const [today] = useState(() => new Date().toISOString().split('T')[0])
-  const [maxDate] = useState(() => {
-    const d = new Date(); d.setFullYear(d.getFullYear() + 1); return d.toISOString().split('T')[0]
-  })
   const [minDeadline] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]
   })
@@ -154,13 +150,13 @@ export default function HomePage() {
               <div className="text-5xl mb-3">🌊</div>
               <h1 className="text-4xl font-black tracking-tight text-white leading-none">Toh Chale</h1>
               <p className="text-base font-semibold mt-3 text-white opacity-90">Your squad. One link. Full trip planned.</p>
-              <p className="text-sm mt-2 leading-relaxed" style={{ color: 'rgba(255,255,255,0.65)' }}>
+              <p className="text-sm mt-2 leading-relaxed font-medium" style={{ color: 'rgba(255,255,255,0.92)' }}>
                 Votes, roles & AI itinerary — no app, no chaos.
               </p>
               {/* India-centric badge */}
               <div className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 rounded-full text-xs font-semibold" style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)', color: '#fff', backdropFilter: 'blur(6px)' }}>
                 <span>🇮🇳</span>
-                <span>Made for India squads · rest of the world can wait 😅</span>
+                <span>Made for India squads · the rest of the world can wait 😅</span>
               </div>
             </div>
           </div>
@@ -185,7 +181,7 @@ export default function HomePage() {
           </div>
 
           {/* Form */}
-          <p className="text-xs font-bold tracking-widest mb-3" style={{ color: 'var(--muted)' }}>LET&apos;S GO 🚀</p>
+          <p className="text-xs font-bold tracking-widest mb-3" style={{ color: 'var(--muted)' }}>PLAN YOUR TRIP 🚀</p>
           <div className="space-y-3 pb-4">
             <div>
               <label className="block text-xs font-semibold mb-1.5 tracking-wide" style={{ color: 'var(--muted)' }}>YOUR NAME</label>
@@ -227,7 +223,7 @@ export default function HomePage() {
               boxShadow: canProceedIdentity ? '0 4px 20px rgba(124,58,237,0.4)' : 'none',
             }}
           >
-            Let&apos;s go →
+            Plan your trip →
           </button>
           <p className="text-center text-xs mt-3" style={{ color: 'var(--muted)' }}>
             By continuing you agree to receive trip updates via email. Unsubscribe anytime.
@@ -520,41 +516,63 @@ export default function HomePage() {
           {/* Vote deadline — mandatory for group vote */}
           {destMode === 'group_vote' && (
             <div>
-              <div className="flex items-center justify-between mb-2.5">
-                <p className="text-xs font-semibold" style={{ color: 'var(--muted)' }}>
-                  VOTING CLOSES BY <span style={{ color: '#db2777' }}>*</span>
-                </p>
-              </div>
-              <div
-                className="p-4 rounded-2xl mb-3"
-                style={{ background: 'rgba(219,39,119,0.06)', border: '1.5px solid rgba(219,39,119,0.2)' }}
-              >
-                <p className="text-xs font-semibold mb-1" style={{ color: '#db2777' }}>⏳ Why set a deadline?</p>
-                <p className="text-xs leading-relaxed" style={{ color: 'var(--muted)' }}>
-                  Someone in every squad drags their feet. A deadline auto-locks the vote so the trip can actually happen 😄
-                </p>
-              </div>
-              <input
-                type="date"
-                value={voteDeadline}
-                min={minDeadline}
-                onChange={e => setVoteDeadline(e.target.value)}
-                className="w-full px-4 py-3.5 rounded-2xl text-sm outline-none"
-                style={{
-                  background: 'var(--card)',
-                  border: voteDeadline ? '2px solid #db2777' : '1.5px solid var(--input-border)',
-                  color: 'var(--foreground)',
-                  colorScheme: 'light',
-                }}
-              />
-              {voteDeadline && !voteDeadlineValid && (
-                <p className="text-xs mt-1.5" style={{ color: '#ef4444' }}>
-                  ⚠️ Deadline must be at least tomorrow
-                </p>
-              )}
-              {voteDeadline && voteDeadlineValid && (
-                <p className="text-xs mt-1.5 font-medium" style={{ color: '#db2777' }}>
-                  🔒 Voting closes end of day on {new Date(voteDeadline + 'T12:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+              <p className="text-xs font-semibold mb-2.5" style={{ color: 'var(--muted)' }}>
+                VOTING CLOSES BY <span style={{ color: '#db2777' }}>*</span>
+              </p>
+              {/* Preset chips */}
+              {(() => {
+                const presets = [
+                  { label: '24 hrs', days: 1 },
+                  { label: '3 days', days: 3 },
+                  { label: '1 week', days: 7 },
+                  { label: '2 weeks', days: 14 },
+                ]
+                return (
+                  <div className="grid grid-cols-4 gap-2 mb-3">
+                    {presets.map(({ label, days }) => {
+                      const d = new Date(); d.setDate(d.getDate() + days)
+                      const val = d.toISOString().split('T')[0]
+                      const selected = voteDeadline === val
+                      return (
+                        <button
+                          key={label}
+                          type="button"
+                          onClick={() => setVoteDeadline(val)}
+                          className="py-2.5 rounded-xl text-xs font-bold transition-all"
+                          style={{
+                            background: selected ? 'linear-gradient(135deg, #7c3aed, #db2777)' : 'var(--card)',
+                            color: selected ? '#fff' : 'var(--foreground)',
+                            border: selected ? 'none' : '1.5px solid var(--input-border)',
+                            boxShadow: selected ? '0 2px 10px rgba(124,58,237,0.3)' : 'none',
+                          }}
+                        >
+                          {label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+              {/* Confirmation / clear */}
+              {voteDeadline && voteDeadlineValid ? (
+                <div className="flex items-center justify-between px-4 py-3 rounded-2xl"
+                  style={{ background: 'rgba(219,39,119,0.06)', border: '1.5px solid rgba(219,39,119,0.25)' }}
+                >
+                  <p className="text-xs font-semibold" style={{ color: '#db2777' }}>
+                    🔒 Closes end of {new Date(voteDeadline + 'T23:59:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setVoteDeadline('')}
+                    className="text-xs font-medium"
+                    style={{ color: 'var(--muted)' }}
+                  >
+                    Change
+                  </button>
+                </div>
+              ) : (
+                <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                  Someone in every squad drags their feet. Pick a deadline — vote auto-locks when it hits. 😄
                 </p>
               )}
             </div>
@@ -620,7 +638,7 @@ export default function HomePage() {
   }
 
   if (step === 'share') {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? (typeof window !== 'undefined' ? window.location.origin : '')
     return (
       <div className="min-h-dvh flex flex-col px-5 safe-top safe-bottom" style={{ background: 'var(--background)' }}>
         <div className="pt-12 pb-6 text-center">
@@ -678,8 +696,8 @@ export default function HomePage() {
 
         <button
           onClick={() => router.push(`/organizer/${tripId}`)}
-          className="w-full py-3 text-sm font-medium mb-4"
-          style={{ color: 'var(--muted)' }}
+          className="w-full py-4 rounded-2xl text-base font-bold mb-4"
+          style={{ background: 'linear-gradient(135deg, #7c3aed, #db2777)', color: '#fff', boxShadow: '0 4px 16px rgba(124,58,237,0.3)' }}
         >
           Go to dashboard →
         </button>

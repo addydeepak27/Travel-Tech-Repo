@@ -10,7 +10,7 @@ export async function GET(
 
   const { data: trip, error: tripError } = await db
     .from('trips')
-    .select('id, name, destination_options, organizer_id')
+    .select('id, name, destination_options, organizer_id, confirmed_destination, status')
     .eq('id', tripId)
     .single()
 
